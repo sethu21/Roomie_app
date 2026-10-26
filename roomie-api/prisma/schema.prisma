@@ -1,0 +1,347 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ExpenseSplitType {
+  EQUAL
+  CUSTOM
+}
+
+enum ReceiptStatus {
+  OPEN
+  FINALIZED
+}
+
+enum ReceiptAdjustmentType {
+  DISCOUNT
+  REFUND
+  DEPOSIT
+  CHARGE
+  TAX_ADJUSTMENT
+  OTHER
+}
+
+enum ChoreFrequency {
+  ONCE
+  DAILY
+  WEEKLY
+}
+
+enum BoardNoteType {
+  NOTICE
+  REMINDER
+  QUESTION
+}
+
+model Apartment {
+  id                   String                @id @default(cuid())
+  name                 String
+  code                 String                @unique
+  createdAt            DateTime              @default(now())
+  members              Member[]
+  receipts             Receipt[]
+  expenses             Expense[]
+  contributionRequests ContributionRequest[]
+  shoppingItems        ShoppingItem[]
+  chores               Chore[]
+  boardNotes           BoardNote[]
+  notifications        Notification[]
+}
+
+model Member {
+  id                          String                @id @default(cuid())
+  name                        String
+  apartmentId                 String
+  apartment                   Apartment             @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  joinedAt                    DateTime              @default(now())
+  receiptsUploaded            Receipt[]             @relation("ReceiptUploader")
+  receiptClaims               ReceiptClaim[]
+  expensesPaid                Expense[]             @relation("ExpensePayer")
+  expenseShares               ExpenseShare[]
+  contributionRequestsCreated ContributionRequest[] @relation("ContributionCreator")
+  contributions               Contribution[]
+  shoppingItemsAdded          ShoppingItem[]
+  repaymentsSent              ExpenseRepayment[]    @relation("RepaymentSender")
+  repaymentsReceived          ExpenseRepayment[]    @relation("RepaymentReceiver")
+  notifications               Notification[]
+  choresCreated               Chore[]               @relation("ChoreCreator")
+  choresAssigned              Chore[]               @relation("ChoreAssignee")
+  boardNotes                  BoardNote[]
+
+  @@index([apartmentId])
+}
+
+model Expense {
+  id                  String               @id @default(cuid())
+  title               String
+  amount              Decimal              @db.Decimal(10, 2)
+  currency            String               @default("EUR")
+  splitType           ExpenseSplitType     @default(EQUAL)
+  apartmentId         String
+  apartment           Apartment            @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  paidById            String
+  paidBy              Member               @relation("ExpensePayer", fields: [paidById], references: [id], onDelete: Restrict)
+  shares              ExpenseShare[]
+  receipt             Receipt?
+  contributionRequest ContributionRequest?
+  createdAt           DateTime             @default(now())
+  repayments          ExpenseRepayment[]
+
+  @@index([apartmentId, createdAt])
+  @@index([paidById])
+}
+
+model ExpenseShare {
+  id        String   @id @default(cuid())
+  expenseId String
+  expense   Expense  @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  memberId  String
+  member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  amount    Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+
+  @@unique([expenseId, memberId])
+  @@index([memberId])
+}
+
+model ContributionRequest {
+  id            String         @id @default(cuid())
+  title         String
+  targetAmount  Decimal        @db.Decimal(10, 2)
+  currency      String         @default("EUR")
+  apartmentId   String
+  apartment     Apartment      @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  createdById   String
+  createdBy     Member         @relation("ContributionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  expenseId     String         @unique
+  expense       Expense        @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  contributions Contribution[]
+  createdAt     DateTime       @default(now())
+
+  @@index([apartmentId, createdAt])
+}
+
+model Contribution {
+  id        String              @id @default(cuid())
+  requestId String
+  request   ContributionRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  memberId  String
+  member    Member              @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  amount    Decimal             @db.Decimal(10, 2)
+  createdAt DateTime            @default(now())
+
+  @@index([requestId])
+  @@index([memberId])
+}
+
+model Receipt {
+  id       String        @id @default(cuid())
+  store    String?
+  currency String        @default("EUR")
+  total    Decimal       @db.Decimal(10, 2)
+  status   ReceiptStatus @default(OPEN)
+
+  apartmentId String
+  apartment   Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+
+  uploaderId String
+  uploader   Member @relation("ReceiptUploader", fields: [uploaderId], references: [id], onDelete: Restrict)
+
+  items       ReceiptItem[]
+  adjustments ReceiptAdjustment[]
+  expenseId   String?             @unique
+  expense     Expense?            @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([apartmentId, status])
+  @@index([uploaderId])
+}
+
+model ReceiptItem {
+  id        String  @id @default(cuid())
+  receiptId String
+  receipt   Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+
+  name       String
+  quantity   Decimal @db.Decimal(10, 3)
+  unitPrice  Decimal @db.Decimal(10, 2)
+  totalPrice Decimal @db.Decimal(10, 2)
+
+  claims            ReceiptClaim[]
+  shoppingPurchases ShoppingPurchase[]
+  createdAt         DateTime           @default(now())
+
+  @@index([receiptId])
+}
+
+model ReceiptClaim {
+  id            String      @id @default(cuid())
+  receiptItemId String
+  receiptItem   ReceiptItem @relation(fields: [receiptItemId], references: [id], onDelete: Cascade)
+
+  memberId String
+  member   Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([receiptItemId, memberId])
+  @@index([memberId])
+}
+
+model ShoppingItem {
+  id                String   @id @default(cuid())
+  name              String
+  quantity          String   @default("1")
+  requiredQuantity  Decimal? @db.Decimal(10, 3)
+  purchasedQuantity Decimal  @default(0) @db.Decimal(10, 3)
+  isPurchased       Boolean  @default(false)
+  manuallyCompleted Boolean  @default(false)
+
+  apartmentId String
+  apartment   Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+
+  addedById String
+  addedBy   Member @relation(fields: [addedById], references: [id], onDelete: Restrict)
+
+  matchedReceiptItemId String?
+  purchasedAt          DateTime?
+
+  purchases ShoppingPurchase[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([apartmentId, isPurchased])
+  @@index([addedById])
+}
+
+model ShoppingPurchase {
+  id String @id @default(cuid())
+
+  shoppingItemId String
+  shoppingItem   ShoppingItem @relation(fields: [shoppingItemId], references: [id], onDelete: Cascade)
+
+  receiptItemId String
+  receiptItem   ReceiptItem @relation(fields: [receiptItemId], references: [id], onDelete: Cascade)
+
+  quantity Decimal @db.Decimal(10, 3)
+
+  createdAt DateTime @default(now())
+
+  @@unique([shoppingItemId, receiptItemId])
+  @@index([receiptItemId])
+}
+
+model ExpenseRepayment {
+  id String @id @default(cuid())
+
+  // The original expense being repaid
+  expenseId String
+  expense   Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+
+  // Roommate who is paying back the debt
+  fromMemberId String
+  fromMember   Member @relation("RepaymentSender", fields: [fromMemberId], references: [id], onDelete: Restrict)
+
+  // Original payer receiving the repayment
+  toMemberId String
+  toMember   Member @relation("RepaymentReceiver", fields: [toMemberId], references: [id], onDelete: Restrict)
+
+  // Uses the original expense currency
+  amount Decimal @db.Decimal(10, 2)
+
+  status String @default("CONFIRMED")
+
+  createdAt DateTime @default(now())
+
+  @@index([expenseId, fromMemberId])
+  @@index([toMemberId])
+}
+
+enum NotificationType {
+  REPAYMENT_REQUEST
+  REPAYMENT_CONFIRMED
+  REPAYMENT_REJECTED
+  EXPENSE_ADDED
+  SHOPPING_UPDATED
+  CHORE_ASSIGNED
+}
+
+model Notification {
+  id String @id @default(cuid())
+
+  apartmentId String
+  apartment   Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+
+  recipientId String
+  recipient   Member @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  type NotificationType
+
+  title   String
+  message String
+
+  isRead Boolean @default(false)
+
+  targetScreen String?
+  targetId     String?
+
+  createdAt DateTime @default(now())
+
+  @@index([recipientId, isRead, createdAt])
+  @@index([apartmentId, createdAt])
+}
+
+model ReceiptAdjustment {
+  id        String  @id @default(cuid())
+  receiptId String
+  receipt   Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+
+  description     String
+  type            ReceiptAdjustmentType
+  amount          Decimal               @db.Decimal(10, 2)
+  alreadyIncluded Boolean               @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([receiptId])
+}
+
+model Chore {
+  id           String         @id @default(cuid())
+  title        String
+  frequency    ChoreFrequency @default(ONCE)
+  dueAt        DateTime?
+  isCompleted  Boolean        @default(false)
+  completedAt  DateTime?
+  apartmentId  String
+  apartment    Apartment      @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  createdById  String
+  createdBy    Member         @relation("ChoreCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  assignedToId String?
+  assignedTo   Member?        @relation("ChoreAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdAt    DateTime       @default(now())
+
+  @@index([apartmentId, isCompleted])
+  @@index([assignedToId])
+}
+
+model BoardNote {
+  id          String        @id @default(cuid())
+  text        String
+  type        BoardNoteType @default(REMINDER)
+  apartmentId String
+  apartment   Apartment     @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      Member        @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt   DateTime      @default(now())
+
+  @@index([apartmentId, createdAt])
+}

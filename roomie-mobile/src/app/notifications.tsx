@@ -15,7 +15,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useApartment } from '../context/ApartmentContext';
 
 // Use the same backend IP as your working Home dashboard.
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.106.217.165:3000'; 
+const API_URL = process.env.EXPO_PUBLIC_API_URL; 
 type Notification = {
   id: string;
   type: string;

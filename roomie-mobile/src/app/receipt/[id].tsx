@@ -15,7 +15,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { fetch } from 'expo/fetch';
 import { loadSession } from '../../session';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.106.217.165:3000';
+const API_URL = process.env.EXPO_PUBLIC_API_URL;
 type Claim = {
   memberId: string;
   member?: {
@@ -183,21 +183,44 @@ export default function ReceiptDetailsScreen() {
       }
 
       setReceipt(data.receipt);
-      const moneyResponse = await fetch(
-        `${API_URL}/api/apartments/${encodeURIComponent(session.code)}/money`
-      );
-      const moneyData = await moneyResponse.json();
-      if (!moneyResponse.ok) {
-        throw new Error(moneyData.error || 'Could not load roommates.');
+
+      // Load roommates separately so a Money API error
+      // does not prevent receipt claims from working.
+      try {
+        const moneyResponse = await fetch(
+          `${API_URL}/api/apartments/${encodeURIComponent(session.code)}/money`
+        );
+
+        const moneyData = await moneyResponse.json();
+
+        if (!moneyResponse.ok) {
+          throw new Error(
+            moneyData.error || 'Could not load roommates.'
+          );
+        }
+
+        const list: Member[] = moneyData.members || [];
+
+        setMembers(list);
+
+        // Explicit payer selection is required.
+        // Do not automatically assume the uploader paid.
+        setPaidById((current: string) =>
+          list.some((m: Member) => m.id === current)
+            ? current
+            : ''
+        );
+
+      } catch (moneyError) {
+        console.warn('Could not load roommate list:', moneyError);
       }
-      const list: Member[] = moneyData.members || [];
-      setMembers(list);
-      // Explicit payer selection is required; do not assume uploader paid.
-      setPaidById(current => list.some(m => m.id === current) ? current : '');
+
     } catch (error) {
       Alert.alert(
         'Could not load receipt',
-        error instanceof Error ? error.message : 'Please try again.'
+        error instanceof Error
+          ? error.message
+          : 'Please try again.'
       );
     } finally {
       setLoading(false);
@@ -435,22 +458,37 @@ export default function ReceiptDetailsScreen() {
               )}
 
               <Pressable
-                style={[
+                accessibilityRole="button"
+                accessibilityLabel={claimedByMe ? 'Remove my claim' : 'Claim this product'}
+                style={({ pressed }) => [
                   styles.button,
                   claimedByMe && styles.removeButton,
-                  (busyItemId !== null || receipt.status !== 'OPEN') &&
-                  styles.disabledButton,
+                  (busyItemId !== null || receipt.status !== 'OPEN') && styles.disabledButton,
+                  pressed && receipt.status === 'OPEN' && busyItemId === null && styles.pressedButton,
                 ]}
-                onPress={() => toggleClaim(item)}
+                onPress={() => void toggleClaim(item)}
                 disabled={busyItemId !== null || receipt.status !== 'OPEN'}
               >
-                {busyItemId === item.id ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.buttonText}>
-                    {claimedByMe ? 'Remove My Claim' : 'I Want This'}
-                  </Text>
-                )}
+                <View style={styles.buttonContents}>
+                  {busyItemId === item.id ? (
+                    <ActivityIndicator color={claimedByMe ? '#075E47' : '#FFFFFF'} />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name={receipt.status !== 'OPEN' ? 'lock-closed-outline' : claimedByMe ? 'checkmark-circle-outline' : 'add-circle-outline'}
+                        size={20}
+                        color={claimedByMe ? '#075E47' : '#FFFFFF'}
+                      />
+                      <Text style={[styles.buttonText, claimedByMe && styles.removeButtonText]}>
+                        {receipt.status !== 'OPEN'
+                          ? 'Receipt Finalized'
+                          : claimedByMe
+                            ? 'Remove My Claim'
+                            : 'I Want This'}
+                      </Text>
+                    </>
+                  )}
+                </View>
               </Pressable>
             </View>
           );
@@ -512,53 +550,54 @@ export default function ReceiptDetailsScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F4F5F9' },
+  safeArea: { flex: 1, backgroundColor: '#F2F7F4' },
   container: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 64 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 14 },
   backButton: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 11, paddingHorizontal: 15, backgroundColor: 'rgba(255,255,255,0.88)', borderColor: '#FFFFFF', borderWidth: 1, borderRadius: 14, marginBottom: 26 },
-  backText: { color: '#9A3412', fontWeight: '800', fontSize: 13 },
+  backText: { color: '#075E47', fontWeight: '800', fontSize: 13 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 13, marginBottom: 12 },
-  storeBadge: { width: 52, height: 52, borderRadius: 17, backgroundColor: '#FFEDD5', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#FED7AA' },
-  eyebrow: { fontSize: 10, letterSpacing: 1.2, fontWeight: '800', color: '#9A3412', marginBottom: 5 },
+  storeBadge: { width: 52, height: 52, borderRadius: 17, backgroundColor: '#E2F4EC', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#BCE5D2' },
+  eyebrow: { fontSize: 10, letterSpacing: 1.2, fontWeight: '800', color: '#075E47', marginBottom: 5 },
   heading: { fontSize: 28, fontWeight: '900', color: '#1E293B', letterSpacing: -0.7 },
   muted: { color: '#64748B', fontSize: 14, lineHeight: 22, marginBottom: 24 },
-  summary: { backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: 24, padding: 20, borderWidth: 1, borderColor: '#FFFFFF', marginBottom: 27, shadowColor: '#9A3412', shadowOpacity: 0.06, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
+  summary: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 20, borderWidth: 1, borderColor: '#FFFFFF', marginBottom: 27, shadowColor: '#064E3B', shadowOpacity: 0.06, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   summaryTop: { flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 17 },
-  summaryIcon: { width: 35, height: 35, borderRadius: 12, backgroundColor: '#9A3412', alignItems: 'center', justifyContent: 'center' },
-  summaryEyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 1.1, color: '#9A3412' },
+  summaryIcon: { width: 35, height: 35, borderRadius: 12, backgroundColor: '#075E47', alignItems: 'center', justifyContent: 'center' },
+  summaryEyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 1.1, color: '#075E47' },
   summaryLabel: { color: '#64748B', fontSize: 13, marginBottom: 7, fontWeight: '600' },
   summaryAmount: { color: '#1E293B', fontSize: 30, fontWeight: '900', marginBottom: 13 },
   summaryDivider: { height: 1, backgroundColor: '#E2E8F0', marginBottom: 17 },
-  myAmount: { color: '#9A3412', fontSize: 26, fontWeight: '900' },
+  myAmount: { color: '#075E47', fontSize: 26, fontWeight: '900' },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 15 },
   sectionTitle: { color: '#1E293B', fontSize: 21, fontWeight: '900', letterSpacing: -0.4, marginBottom: 8 },
-  countBadge: { paddingVertical: 7, paddingHorizontal: 11, borderRadius: 20, backgroundColor: '#FFEDD5' },
-  countText: { color: '#9A3412', fontSize: 11, fontWeight: '800' },
-  productCard: { backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 22, padding: 17, borderWidth: 1, borderColor: '#FFFFFF', marginBottom: 13, shadowColor: '#1E293B', shadowOpacity: 0.045, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
+  countBadge: { paddingVertical: 7, paddingHorizontal: 11, borderRadius: 20, backgroundColor: '#E2F4EC' },
+  countText: { color: '#075E47', fontSize: 11, fontWeight: '800' },
+  productCard: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, borderWidth: 1, borderColor: '#E1EBE6', marginBottom: 13, shadowColor: '#1E293B', shadowOpacity: 0.045, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
   productHeading: { flexDirection: 'row', alignItems: 'center', gap: 11, marginBottom: 12 },
-  productIcon: { width: 39, height: 39, borderRadius: 13, backgroundColor: '#FFF1E6', alignItems: 'center', justifyContent: 'center' },
+  productIcon: { width: 39, height: 39, borderRadius: 13, backgroundColor: '#ECF8F2', alignItems: 'center', justifyContent: 'center' },
   productName: { color: '#1E293B', fontSize: 15, fontWeight: '800', lineHeight: 21 },
   productDetail: { color: '#64748B', fontSize: 13, lineHeight: 20 },
   priceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginVertical: 11 },
   productPrice: { color: '#1E293B', fontSize: 23, fontWeight: '900' },
   statusBadge: { borderRadius: 20, paddingVertical: 6, paddingHorizontal: 9 },
-  statusUnclaimed: { backgroundColor: '#FFF1E6' },
+  statusUnclaimed: { backgroundColor: '#ECF8F2' },
   statusClaimed: { backgroundColor: '#DCFCE7' },
   statusShared: { backgroundColor: '#E0F2FE' },
   statusText: { fontSize: 10, fontWeight: '800' },
-  statusUnclaimedText: { color: '#9A3412' },
+  statusUnclaimedText: { color: '#075E47' },
   statusClaimedText: { color: '#065F46' },
   statusSharedText: { color: '#0369A1' },
   claimName: { color: '#065F46', fontSize: 12, marginTop: 5, fontWeight: '600' },
-  unclaimed: { color: '#C2410C', fontSize: 12, marginTop: 6 },
-  button: { backgroundColor: '#9A3412', borderRadius: 15, minHeight: 53, alignItems: 'center', justifyContent: 'center', marginTop: 15, paddingHorizontal: 14 },
-  buttonContents: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  removeButton: { backgroundColor: '#FFF1E6', borderWidth: 1, borderColor: '#FED7AA' },
-  removeButtonText: { color: '#9A3412' },
-  disabledButton: { opacity: 0.5 },
-  buttonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  unclaimed: { color: '#A16207', fontSize: 12, marginTop: 6 },
+  button: { backgroundColor: '#075E47', borderRadius: 14, minHeight: 54, alignItems: 'center', justifyContent: 'center', marginTop: 15, paddingHorizontal: 14 },
+  buttonContents: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 },
+  removeButton: { backgroundColor: '#FFFFFF', borderWidth: 1.5, borderColor: '#075E47' },
+  removeButtonText: { color: '#075E47' },
+  disabledButton: { opacity: 0.58 },
+  pressedButton: { opacity: 0.82 },
+  buttonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   previewRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: 8, gap: 12 },
   payerOption: { padding: 14, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 14, marginTop: 9, backgroundColor: '#FFFFFF' },
-  payerSelected: { borderColor: '#9A3412', backgroundColor: '#FFF1E6' },
+  payerSelected: { borderColor: '#9A3412', backgroundColor: '#ECF8F2' },
   footerNote: { color: '#64748B', fontSize: 12, lineHeight: 19, marginTop: 12 },
 });

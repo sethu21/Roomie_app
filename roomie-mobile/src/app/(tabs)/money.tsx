@@ -18,7 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApartment } from '../../context/ApartmentContext';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.106.217.165:3000';
+const API_URL = process.env.EXPO_PUBLIC_API_URL;
 type Currency = 'EUR' | 'CZK';
 
 function normalizeCurrency(value: unknown): Currency | null {
@@ -244,8 +244,15 @@ export default function MoneyScreen() {
         }
         setDebts(Array.isArray(debtResult.debts) ? debtResult.debts : []);
       } catch (debtError) {
-        console.warn('Could not refresh debts:', debtError);
-        setDebts([]);
+        console.error('Could not refresh debts:', debtError);
+
+        Alert.alert(
+          'Could not load balances',
+          debtError instanceof Error
+            ? debtError.message
+            : 'Unable to connect to the Roomie server.'
+        );
+
       } finally {
         setDebtLoading(false);
       }
@@ -657,7 +664,9 @@ export default function MoneyScreen() {
 
 
   const visibleDebts = debts.filter(
-    (debt) => normalizeCurrency(debt.currency) === selectedCurrency,
+    (debt) =>
+      normalizeCurrency(debt.currency) === selectedCurrency &&
+      Number(debt.remainingAmount) > 0
   );
   const myDebts = visibleDebts.filter((debt) => debt.fromMember.id === memberId);
   const owedToMe = visibleDebts
@@ -731,7 +740,13 @@ export default function MoneyScreen() {
 
   const totalIOwe = myDebts.reduce((sum, debt) => sum + Number(debt.remainingAmount), 0);
   const totalOwedToMe = owedToMe.reduce((sum, debt) => sum + Number(debt.remainingAmount), 0);
+  // Net balance across all roommates in the selected currency.
+  const netBalance = Math.round(
+    (totalOwedToMe - totalIOwe) * 100
+  ) / 100;
 
+  const netAmountIOwe = Math.max(0, -netBalance);
+  const netAmountOwedToMe = Math.max(0, netBalance);
   // Only expenses are included in spending totals. A finalized receipt
   // already creates an expense, so adding receipt totals would double-count it.
   const visibleExpenses = (data?.expenses ?? []).filter(
@@ -951,13 +966,21 @@ export default function MoneyScreen() {
                 {Math.abs(totalIOwe - totalOwedToMe) < 0.005
                   ? 'All settled up!'
                   : totalIOwe > totalOwedToMe
-                  ? 'You have a balance to settle'
-                  : 'You are owed money'}
+                    ? 'You have a balance to settle'
+                    : 'You are owed money'}
               </Text>
               <Text style={redesign.heroCaption}>
-                {Math.abs(totalIOwe - totalOwedToMe) < 0.005
-                  ? 'Your outstanding balances are even.'
-                  : `Net difference: ${formatMoney(Math.abs(totalIOwe - totalOwedToMe), selectedCurrency)}`}
+                {netBalance === 0
+                  ? 'Your net balance is zero. Check individual debts for details.'
+                  : netBalance < 0
+                    ? `Net amount to pay: ${formatMoney(
+                      netAmountIOwe,
+                      selectedCurrency
+                    )}`
+                    : `Net amount to receive: ${formatMoney(
+                      netAmountOwedToMe,
+                      selectedCurrency
+                    )}`}
               </Text>
               <View style={redesign.heroStats}>
                 <Pressable style={redesign.heroStat} onPress={openDebts}>
@@ -1000,20 +1023,59 @@ export default function MoneyScreen() {
             )}
 
             <Text style={redesign.sectionTitle}>Manage money</Text>
-            <View style={moneyTheme.workspaceRow}>
-              <Pressable style={moneyTheme.workspaceButton} onPress={() => { setMoneyWorkspace('expenses'); setActiveTab('expenses'); }}>
-                <Ionicons name="receipt-outline" size={19} color="#065F46" />
-                <Text style={moneyTheme.workspaceText}>Expenses</Text>
-              </Pressable>
-              <Pressable style={moneyTheme.workspaceButton} onPress={() => { setMoneyWorkspace('contributions'); setActiveTab('contributions'); }}>
-                <Ionicons name="people-outline" size={19} color="#065F46" />
-                <Text style={moneyTheme.workspaceText}>Contributions</Text>
-              </Pressable>
-              <Pressable style={moneyTheme.workspaceButton} onPress={() => { setMoneyWorkspace('insights'); setActiveSpendingView('chart'); }}>
-                <Ionicons name="stats-chart-outline" size={19} color="#065F46" />
-                <Text style={moneyTheme.workspaceText}>Insights</Text>
-              </Pressable>
-            </View>
+            
+<View style={moneyTheme.workspaceRow}>
+  {([
+    {
+      key: 'expenses',
+      label: 'Expenses',
+      icon: 'receipt-outline',
+    },
+    {
+      key: 'contributions',
+      label: 'Contributions',
+      icon: 'people-outline',
+    },
+    {
+      key: 'insights',
+      label: 'Insights',
+      icon: 'analytics-outline',
+    },
+  ] as const).map((item) => (
+    <Pressable
+      key={item.key}
+      style={({ pressed }) => [
+        moneyTheme.workspaceButton,
+        pressed && moneyTheme.workspacePressed,
+      ]}
+      onPress={() => {
+        setMoneyWorkspace(item.key);
+        if (item.key === 'expenses') setActiveTab('expenses');
+        if (item.key === 'contributions') setActiveTab('contributions');
+        if (item.key === 'insights') setActiveSpendingView('chart');
+      }}
+    >
+      <View style={moneyTheme.workspaceIcon}>
+        <Ionicons
+          name={item.icon}
+          size={23}
+          color="#065F46"
+        />
+      </View>
+
+      <Text style={moneyTheme.workspaceText}>
+        {item.label}
+      </Text>
+
+      <Ionicons
+        name="arrow-forward"
+        size={15}
+        color="#94A3B8"
+      />
+    </Pressable>
+  ))}
+</View>
+
 
             <View style={redesign.sectionHeadingRow}>
               <Text style={redesign.sectionTitle}>Recent expenses</Text>
@@ -1034,1198 +1096,1198 @@ export default function MoneyScreen() {
           </>
         )}
         {moneyWorkspace === 'insights' && (<>
-        <View style={styles.moneySectionRow}>
-          <Text style={styles.moneySectionTitle}>Apartment spending</Text>
-          <Text style={styles.moneySectionHint}>SHARED HOME</Text>
-        </View>
-
-        <Pressable
-          style={styles.moneySpendingCard}
-          onPress={() => setShowSpendingDetails((previous) => !previous)}
-        >
-          <View style={styles.moneySpendingIcon}>
-            <Ionicons name="receipt-outline" size={22} color="#065F46" />
+          <View style={styles.moneySectionRow}>
+            <Text style={styles.moneySectionTitle}>Apartment spending</Text>
+            <Text style={styles.moneySectionHint}>SHARED HOME</Text>
           </View>
 
-          <View style={{ flex: 1 }}>
-            <Text style={styles.moneySpendingLabel}>
-              {data?.apartment.name || apartmentName}
-            </Text>
+          <Pressable
+            style={styles.moneySpendingCard}
+            onPress={() => setShowSpendingDetails((previous) => !previous)}
+          >
+            <View style={styles.moneySpendingIcon}>
+              <Ionicons name="receipt-outline" size={22} color="#065F46" />
+            </View>
 
-            <Text style={styles.moneySpendingAmount}>
-              {formatMoney(totalExpenses, selectedCurrency)}
-            </Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.moneySpendingLabel}>
+                {data?.apartment.name || apartmentName}
+              </Text>
 
-            <Text style={styles.moneySpendingMeta}>
-              Your share: {formatMoney(myExpenses, selectedCurrency)}
-            </Text>
-          </View>
+              <Text style={styles.moneySpendingAmount}>
+                {formatMoney(totalExpenses, selectedCurrency)}
+              </Text>
 
-          <Ionicons
-            name={showSpendingDetails ? 'chevron-up' : 'chevron-down'}
-            size={20}
-            color="#065F46"
-          />
-        </Pressable>
+              <Text style={styles.moneySpendingMeta}>
+                Your share: {formatMoney(myExpenses, selectedCurrency)}
+              </Text>
+            </View>
 
-        {showSpendingDetails && (
-          <View style={styles.moneySpendingDetails}>
-            <Text style={styles.moneyDetailHeading}>Spending by roommate</Text>
+            <Ionicons
+              name={showSpendingDetails ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color="#065F46"
+            />
+          </Pressable>
 
-            {roommateSpending.map((member) => (
-              <View key={member.id} style={styles.moneyMemberRow}>
-                <View style={styles.moneyMemberAvatar}>
-                  <Text style={styles.moneyMemberInitial}>
-                    {member.name.charAt(0).toUpperCase()}
+          {showSpendingDetails && (
+            <View style={styles.moneySpendingDetails}>
+              <Text style={styles.moneyDetailHeading}>Spending by roommate</Text>
+
+              {roommateSpending.map((member) => (
+                <View key={member.id} style={styles.moneyMemberRow}>
+                  <View style={styles.moneyMemberAvatar}>
+                    <Text style={styles.moneyMemberInitial}>
+                      {member.name.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.moneyMemberName}>
+                      {member.name}
+                      {member.id === memberId ? ' (You)' : ''}
+                    </Text>
+
+                    <Text style={styles.moneyDetailNote}>
+                      Paid: {formatMoney(member.amountPaid, selectedCurrency)}
+                    </Text>
+                  </View>
+
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={styles.moneyMemberAmount}>
+                      {formatMoney(member.personalShare, selectedCurrency)}
+                    </Text>
+                    <Text style={styles.moneyDetailNote}>Their share</Text>
+                  </View>
+                </View>
+              ))}
+
+              <View style={styles.moneyOwedPanel}>
+                <Text style={styles.moneyDetailHeading}>Who owes you</Text>
+
+                {peopleWhoOweMe.length > 0 ? (
+                  peopleWhoOweMe.map((debt) => (
+                    <View
+                      key={`${debt.expenseId}:${debt.fromMember.id}`}
+                      style={styles.moneyOwedRow}
+                    >
+                      <Text style={styles.moneyMemberName}>
+                        {debt.fromMember.name}
+                      </Text>
+
+                      <Text style={styles.moneyOwedAmount}>
+                        {formatMoney(debt.remainingAmount, selectedCurrency)}
+                      </Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.moneyDetailNote}>
+                    Nobody currently owes you.
                   </Text>
+                )}
+              </View>
+            </View>
+          )}
+
+          <View style={styles.spendingToolsRow}>
+            <Pressable
+              style={[
+                styles.spendingToolButton,
+                { backgroundColor: '#EEEAFE' },
+                activeSpendingView === 'chart' && styles.spendingToolActive,
+              ]}
+              onPress={() =>
+                setActiveSpendingView(
+                  activeSpendingView === 'chart' ? null : 'chart'
+                )
+              }
+            >
+              <Ionicons
+                name="stats-chart-outline"
+                size={26}
+                color="#065F46"
+              />
+
+              <Text style={styles.spendingToolTitle}>
+                Spending activity
+              </Text>
+
+              <Text style={styles.spendingToolSubtitle}>
+                View spending trends
+              </Text>
+
+              <Ionicons
+                name={activeSpendingView === 'chart' ? 'chevron-up' : 'arrow-forward'}
+                size={18}
+                color="#065F46"
+              />
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.spendingToolButton,
+                { backgroundColor: '#E6F8EF' },
+                activeSpendingView === 'calendar' && styles.spendingToolActive,
+              ]}
+              onPress={() =>
+                setActiveSpendingView(
+                  activeSpendingView === 'calendar' ? null : 'calendar'
+                )
+              }
+            >
+              <Ionicons
+                name="calendar-outline"
+                size={26}
+                color="#178B67"
+              />
+
+              <Text style={styles.spendingToolTitle}>
+                Expense calendar
+              </Text>
+
+              <Text style={styles.spendingToolSubtitle}>
+                Browse by date
+              </Text>
+
+              <Ionicons
+                name={activeSpendingView === 'calendar' ? 'chevron-up' : 'arrow-forward'}
+                size={18}
+                color="#178B67"
+              />
+            </Pressable>
+          </View>
+
+
+          {/* Interactive spending chart */}
+          {activeSpendingView === 'chart' && (
+            <View style={styles.spendingVisualCard}>
+              <View style={styles.visualHeader}>
+                <Text style={styles.moneyDetailHeading}>Spending activity</Text>
+                <Text style={styles.visualSubtitle}>LAST 7 DAYS</Text>
+              </View>
+              <View style={styles.spendingChart}>
+                {lastSevenDays.map((day) => (
+                  <Pressable
+                    key={day.key}
+                    style={styles.chartColumn}
+                    onPress={() => {
+                      setSelectedSpendingDate(day.key);
+                      const chosen = new Date(`${day.key}T12:00:00`);
+                      setCalendarMonth(new Date(chosen.getFullYear(), chosen.getMonth(), 1));
+                    }}
+                  >
+                    <View style={styles.chartBarTrack}>
+                      <View style={[styles.chartBar, {
+                        height: `${day.amount > 0 ? Math.max(8, day.amount / maximumDailySpending * 100) : 2}%`,
+                        backgroundColor: selectedSpendingDate === day.key ? '#065F46' : '#C8BFFF',
+                      }]} />
+                    </View>
+                    <Text style={styles.chartDay}>{day.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Text style={styles.visualFooter}>Tap a bar to explore daily expenses</Text>
+            </View>
+          )}
+
+          {/* Interactive expense calendar */}
+          {activeSpendingView === 'calendar' && (
+            <View style={styles.spendingVisualCard}>
+              <View style={styles.visualHeader}>
+                <Text style={styles.moneyDetailHeading}>Expense calendar</Text>
+                <View style={styles.calendarNavigation}>
+                  <Pressable onPress={() => setCalendarMonth(new Date(calendarYear, calendarMonthIndex - 1, 1))}>
+                    <Ionicons name="chevron-back" size={19} color="#065F46" />
+                  </Pressable>
+                  <Text style={styles.calendarMonthText}>
+                    {calendarMonth.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                  </Text>
+                  <Pressable onPress={() => setCalendarMonth(new Date(calendarYear, calendarMonthIndex + 1, 1))}>
+                    <Ionicons name="chevron-forward" size={19} color="#065F46" />
+                  </Pressable>
+                </View>
+              </View>
+              <View style={styles.calendarGrid}>
+                {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, index) => (
+                  <View key={`heading-${index}`} style={styles.calendarCell}>
+                    <Text style={styles.calendarWeekday}>{day}</Text>
+                  </View>
+                ))}
+                {Array.from({ length: calendarOffset }, (_, index) => (
+                  <View key={`empty-${index}`} style={styles.calendarCell} />
+                ))}
+                {Array.from({ length: calendarDays }, (_, index) => {
+                  const day = index + 1;
+                  const key = dateKey(new Date(calendarYear, calendarMonthIndex, day));
+                  const hasExpense = (dailySpending[key] ?? 0) > 0;
+                  const selected = selectedSpendingDate === key;
+                  return (
+                    <Pressable
+                      key={key}
+                      style={[styles.calendarCell, selected && styles.calendarSelected]}
+                      onPress={() => setSelectedSpendingDate(key)}
+                    >
+                      <Text style={[styles.calendarDay, selected && { color: '#FFFFFF' }]}>{day}</Text>
+                      {hasExpense && <View style={[styles.calendarDot, selected && { backgroundColor: '#FFFFFF' }]} />}
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {selectedSpendingDate && (
+                <View style={styles.selectedDatePanel}>
+                  <View style={styles.visualHeader}>
+                    <Text style={styles.moneyDetailHeading}>
+                      {new Date(`${selectedSpendingDate}T12:00:00`).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    </Text>
+                    <Pressable onPress={() => { setSelectedSpendingDate(null); setExpandedExpenseId(null); }}>
+                      <Ionicons name="close-circle" size={22} color="#77758C" />
+                    </Pressable>
+                  </View>
+                  {expensesByDate.length === 0 ? (
+                    <Text style={styles.moneyDetailNote}>No expenses recorded on this date.</Text>
+                  ) : expensesByDate.map((expense) => (
+                    <Pressable
+                      key={expense.id}
+                      style={styles.calendarExpenseRow}
+                      onPress={() => setExpandedExpenseId(expandedExpenseId === expense.id ? null : expense.id)}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.moneyMemberName}>{expense.title}</Text>
+                        <Text style={styles.moneyDetailNote}>Paid by {expense.paidBy?.name || 'Roommate'}</Text>
+                      </View>
+                      <Text style={styles.moneyMemberAmount}>{formatMoney(expense.amount, selectedCurrency)}</Text>
+                      <Ionicons name={expandedExpenseId === expense.id ? 'chevron-up' : 'chevron-down'} size={16} color="#77758C" />
+                      {expandedExpenseId === expense.id && (
+                        <View style={{ width: '100%', marginTop: 10 }}>
+                          {expense.shares.map((share) => (
+                            <View key={share.id} style={styles.moneyOwedRow}>
+                              <Text style={styles.moneyDetailNote}>{share.member?.name || 'Roommate'}</Text>
+                              <Text style={styles.moneyMemberName}>{formatMoney(share.amount, selectedCurrency)}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+
+        </>)}
+        {moneyWorkspace !== null && moneyWorkspace !== 'insights' && (<>
+          <View style={styles.moneySectionRow}>
+            <Text style={styles.moneySectionTitle}>Transactions</Text>
+            <Text style={styles.moneySectionHint}>MANAGE TOGETHER</Text>
+          </View>
+
+          <View
+            style={styles.premiumTabsContainer}
+            onLayout={(event) => { transactionsY.current = event.nativeEvent.layout.y; }}
+          >
+            {([
+              { key: 'expenses', label: 'Expenses', icon: 'receipt-outline' },
+              { key: 'contributions', label: 'Contributions', icon: 'people-outline' },
+              { key: 'debts', label: 'Debts', icon: 'wallet-outline' },
+            ] as const).map((tab) => {
+              const isActive = activeTab === tab.key;
+
+              return (
+                <Pressable
+                  key={tab.key}
+                  style={[
+                    styles.premiumTab,
+                    isActive && styles.premiumTabActive,
+                  ]}
+                  onPress={() => setActiveTab(tab.key)}
+                >
+                  <Ionicons
+                    name={tab.icon}
+                    size={19}
+                    color={isActive ? '#FFFFFF' : '#85839A'}
+                  />
+
+                  <Text
+                    style={[
+                      styles.premiumTabText,
+                      isActive && styles.premiumTabTextActive,
+                    ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    {tab.label}
+                  </Text>
+
+                  {tab.key === 'debts' && pendingCount > 0 && (
+                    <View style={styles.premiumTabBadge}>
+                      <Text style={styles.premiumTabBadgeText}>
+                        {pendingCount > 99 ? '99+' : pendingCount}
+                      </Text>
+                    </View>
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {activeTab === 'expenses' ? (
+            <>
+              <Pressable
+                style={styles.addExpenseCard}
+                onPress={() => setShowExpenseForm((value) => !value)}
+                accessibilityRole="button"
+                accessibilityLabel={showExpenseForm ? 'Cancel adding expense' : 'Add new expense'}
+              >
+                <View style={styles.addExpenseIconBox}>
+                  <Ionicons
+                    name={showExpenseForm ? 'close' : 'add'}
+                    size={27}
+                    color="#FFFFFF"
+                  />
                 </View>
 
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.moneyMemberName}>
-                    {member.name}
-                    {member.id === memberId ? ' (You)' : ''}
+                  <Text style={styles.addExpenseTitle}>
+                    {showExpenseForm ? 'Cancel new expense' : 'Add new expense'}
                   </Text>
 
-                  <Text style={styles.moneyDetailNote}>
-                    Paid: {formatMoney(member.amountPaid, selectedCurrency)}
+                  <Text style={styles.addExpenseSubtitle}>
+                    {showExpenseForm
+                      ? 'Close the expense form'
+                      : 'Split a payment with roommates'}
                   </Text>
                 </View>
 
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={styles.moneyMemberAmount}>
-                    {formatMoney(member.personalShare, selectedCurrency)}
-                  </Text>
-                  <Text style={styles.moneyDetailNote}>Their share</Text>
-                </View>
-              </View>
-            ))}
+                <Ionicons
+                  name={showExpenseForm ? 'chevron-up' : 'arrow-forward'}
+                  size={21}
+                  color="#FFFFFF"
+                />
+              </Pressable>
 
-            <View style={styles.moneyOwedPanel}>
-              <Text style={styles.moneyDetailHeading}>Who owes you</Text>
+              {showExpenseForm && (
+                <View style={styles.formCard}>
+                  <Text style={styles.sectionHeading}>New expense · {selectedCurrency}</Text>
 
-              {peopleWhoOweMe.length > 0 ? (
-                peopleWhoOweMe.map((debt) => (
-                  <View
-                    key={`${debt.expenseId}:${debt.fromMember.id}`}
-                    style={styles.moneyOwedRow}
+                  <Text style={styles.inputLabel}>EXPENSE NAME</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. Groceries"
+                    placeholderTextColor="#9298A6"
+                    value={expenseTitle}
+                    onChangeText={setExpenseTitle}
+                  />
+
+                  <Text style={styles.inputLabel}>TOTAL AMOUNT ({selectedCurrency})</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="0.00"
+                    placeholderTextColor="#9298A6"
+                    value={expenseAmount}
+                    onChangeText={setExpenseAmount}
+                    keyboardType="decimal-pad"
+                  />
+
+                  <Text style={styles.premiumFormSectionTitle}>Who paid?</Text>
+
+                  <View style={styles.payerGrid}>
+                    {(data?.members ?? []).map((member) => {
+                      const selected = paidById === member.id;
+
+                      return (
+                        <Pressable
+                          key={member.id}
+                          style={[
+                            styles.payerCard,
+                            selected && styles.payerCardSelected,
+                          ]}
+                          onPress={() => setPaidById(member.id)}
+                        >
+                          <View
+                            style={[
+                              styles.payerAvatar,
+                              selected && styles.payerAvatarSelected,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.payerInitial,
+                                selected && { color: '#FFFFFF' },
+                              ]}
+                            >
+                              {member.name.charAt(0).toUpperCase()}
+                            </Text>
+                          </View>
+
+                          <Text
+                            style={styles.payerName}
+                            numberOfLines={1}
+                          >
+                            {member.id === memberId ? 'You' : member.name}
+                          </Text>
+
+                          {selected && (
+                            <Ionicons
+                              name="checkmark-circle"
+                              size={18}
+                              color="#065F46"
+                            />
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
+                  <Text style={styles.premiumFormSectionTitle}>How to split?</Text>
+
+                  <View style={styles.premiumSplitRow}>
+                    <Pressable
+                      style={[
+                        styles.premiumSplitCard,
+                        splitType === 'EQUAL' && styles.premiumSplitSelected,
+                      ]}
+                      onPress={() => setSplitType('EQUAL')}
+                    >
+                      <Ionicons
+                        name="people-outline"
+                        size={23}
+                        color={splitType === 'EQUAL' ? '#065F46' : '#85839A'}
+                      />
+
+                      <Text style={styles.premiumSplitTitle}>
+                        Split equally
+                      </Text>
+
+                      <Text style={styles.premiumSplitSubtitle}>
+                        Same share for everyone
+                      </Text>
+
+                      {splitType === 'EQUAL' && (
+                        <Ionicons name="checkmark-circle" size={18} color="#065F46" />
+                      )}
+                    </Pressable>
+
+                    <Pressable
+                      style={[
+                        styles.premiumSplitCard,
+                        splitType === 'CUSTOM' && styles.premiumSplitSelected,
+                      ]}
+                      onPress={() => setSplitType('CUSTOM')}
+                    >
+                      <Ionicons
+                        name="options-outline"
+                        size={23}
+                        color={splitType === 'CUSTOM' ? '#065F46' : '#85839A'}
+                      />
+
+                      <Text style={styles.premiumSplitTitle}>
+                        Custom split
+                      </Text>
+
+                      <Text style={styles.premiumSplitSubtitle}>
+                        Set individual amounts
+                      </Text>
+
+                      {splitType === 'CUSTOM' && (
+                        <Ionicons name="checkmark-circle" size={18} color="#065F46" />
+                      )}
+                    </Pressable>
+                  </View>
+
+                  {splitType === 'EQUAL' ? (
+                    <Text style={styles.helper}>
+                      The amount will be divided between all apartment members.
+                      Any extra cents are allocated fairly.
+                    </Text>
+                  ) : (
+                    <>
+                      <Text style={styles.helper}>
+                        Enter each roommate's share. Use 0 for anyone who owes
+                        nothing. All amounts must add up to the total.
+                      </Text>
+                      <View style={styles.splitSummaryCard}>
+                        <Text style={styles.splitSummaryLabel}>TOTAL EXPENSE</Text>
+
+                        <Text style={styles.splitSummaryTotal}>
+                          {formatMoney(expenseTotalCents / 100, selectedCurrency)}
+                        </Text>
+
+                        <View style={styles.splitSummaryDivider} />
+
+                        <View style={styles.splitSummaryRow}>
+                          <Text style={styles.splitSummaryMuted}>
+                            Amount allocated
+                          </Text>
+                          <Text style={styles.splitSummaryValue}>
+                            {formatMoney(allocatedCents / 100, selectedCurrency)}
+                          </Text>
+                        </View>
+
+                        <View style={styles.splitProgressTrack}>
+                          <View
+                            style={[
+                              styles.splitProgressFill,
+                              {
+                                width: `${expenseTotalCents > 0
+                                  ? Math.min(
+                                    100,
+                                    Math.max(0, (allocatedCents / expenseTotalCents) * 100)
+                                  )
+                                  : 0
+                                  }%`,
+                              },
+                            ]}
+                          />
+                        </View>
+
+                        <View style={styles.splitSummaryRow}>
+                          <Text style={styles.splitSummaryMuted}>
+                            Remaining to allocate
+                          </Text>
+                          <Text
+                            style={[
+                              styles.splitRemainingValue,
+                              remainingCents !== 0 && { color: '#C96A57' },
+                            ]}
+                          >
+                            {formatMoney(remainingCents / 100, selectedCurrency)}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Text style={styles.premiumFormSectionTitle}>
+                        Roommate shares
+                      </Text>
+
+                      {(data?.members ?? []).map((member) => (
+                        <View key={member.id} style={styles.customShareCard}>
+                          <View style={styles.customShareAvatar}>
+                            <Text style={styles.customShareInitial}>
+                              {member.name.charAt(0).toUpperCase()}
+                            </Text>
+                          </View>
+
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.customShareName}>
+                              {member.id === memberId ? 'You' : member.name}
+                            </Text>
+                            <Text style={styles.customShareHint}>
+                              Custom amount
+                            </Text>
+                          </View>
+
+                          <View style={styles.customShareInputWrap}>
+                            <Text style={styles.customShareCurrency}>
+                              {selectedCurrency === 'EUR' ? '€' : 'Kč'}
+                            </Text>
+
+                            <TextInput
+                              style={styles.customShareInput}
+                              placeholder="0.00"
+                              placeholderTextColor="#AAA6B8"
+                              keyboardType="decimal-pad"
+                              value={customShares[member.id] ?? ''}
+                              onChangeText={(value) =>
+                                updateCustomShare(member.id, value)
+                              }
+                            />
+                          </View>
+                        </View>
+                      ))}
+
+                      <View style={styles.splitValidationRow}>
+                        <Ionicons
+                          name={
+                            isCustomSplitValid
+                              ? 'checkmark-circle'
+                              : 'alert-circle-outline'
+                          }
+                          size={19}
+                          color={isCustomSplitValid ? '#178B67' : '#C96A57'}
+                        />
+
+                        <Text
+                          style={[
+                            styles.splitValidationText,
+                            {
+                              color: isCustomSplitValid ? '#178B67' : '#C96A57',
+                            },
+                          ]}
+                        >
+                          {isCustomSplitValid
+                            ? 'All shares are allocated correctly'
+                            : 'Shares must equal the total expense'}
+                        </Text>
+                      </View>
+                    </>
+                  )}
+
+                  <Pressable
+                    style={[
+                      styles.premiumSaveExpenseButton,
+                      (saving || (splitType === 'CUSTOM' && !isCustomSplitValid)) &&
+                      styles.premiumSaveExpenseDisabled,
+                    ]}
+                    disabled={
+                      saving || (splitType === 'CUSTOM' && !isCustomSplitValid)
+                    }
+                    onPress={submitExpense}
                   >
-                    <Text style={styles.moneyMemberName}>
-                      {debt.fromMember.name}
-                    </Text>
+                    {saving ? (
+                      <ActivityIndicator color="#FFFFFF" />
+                    ) : (
+                      <>
+                        <Ionicons
+                          name="checkmark-circle-outline"
+                          size={22}
+                          color="#FFFFFF"
+                        />
 
-                    <Text style={styles.moneyOwedAmount}>
-                      {formatMoney(debt.remainingAmount, selectedCurrency)}
-                    </Text>
+                        <Text style={styles.premiumSaveExpenseText}>
+                          Save expense
+                        </Text>
+
+                        <Ionicons
+                          name="arrow-forward"
+                          size={19}
+                          color="#FFFFFF"
+                        />
+                      </>
+                    )}
+                  </Pressable>
+                </View>
+              )}
+              <Text style={styles.sectionHeading}>Smart Receipt Claims</Text>
+              {(data?.receipts ?? []).some((receipt) => !normalizeCurrency(receipt.currency)) && (
+                <Text style={styles.helper}>
+                  Some older receipts have an unrecognized currency and are hidden until corrected.
+                </Text>
+              )}
+
+              {visibleReceipts.length ? (
+                visibleReceipts.map((receipt) => (
+                  <View key={receipt.id} style={styles.premiumReceiptCard}>
+                    <Pressable
+                      style={styles.premiumReceiptMain}
+                      onPress={() => router.push(`/receipt/${receipt.id}` as never)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open receipt from ${receipt.store || 'shop'}`}
+                    >
+                      <View style={styles.premiumReceiptIcon}>
+                        <Ionicons name="receipt-outline" size={24} color="#065F46" />
+                      </View>
+
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.premiumReceiptTitle} numberOfLines={1}>
+                          {receipt.store || 'Receipt'}
+                        </Text>
+
+                        <Text style={styles.premiumReceiptSubtitle} numberOfLines={1}>
+                          Uploaded by {receipt.uploader?.name || 'Roommate'}
+                        </Text>
+
+                        <Text style={styles.premiumReceiptDate}>
+                          {receipt.createdAt
+                            ? new Date(receipt.createdAt).toLocaleDateString()
+                            : ''}
+                        </Text>
+                      </View>
+
+                      <View style={{ alignItems: 'flex-end', gap: 7 }}>
+                        <Text style={styles.premiumReceiptAmount}>
+                          {formatMoney(receipt.total, selectedCurrency)}
+                        </Text>
+                        <Ionicons name="chevron-forward" size={18} color="#065F46" />
+                      </View>
+                    </Pressable>
+
+                    <View style={styles.premiumReceiptFooter}>
+                      <View style={styles.premiumReceiptBadge}>
+                        <Ionicons name="sparkles-outline" size={14} color="#065F46" />
+                        <Text style={styles.premiumReceiptBadgeText}>Smart receipt</Text>
+                      </View>
+
+                      {receipt.uploader?.id === memberId && receipt.status === 'OPEN' ? (
+                        <Pressable
+                          disabled={saving}
+                          onPress={() => deleteReceipt(receipt.id)}
+                          style={styles.premiumReceiptDelete}
+                        >
+                          <Ionicons name="trash-outline" size={15} color="#C96A57" />
+                          <Text style={styles.premiumReceiptDeleteText}>Delete</Text>
+                        </Pressable>
+                      ) : (
+                        <Pressable
+                          onPress={() => router.push(`/receipt/${receipt.id}` as never)}
+                        >
+                          <Text style={styles.premiumReceiptView}>View items →</Text>
+                        </Pressable>
+                      )}
+                    </View>
                   </View>
                 ))
               ) : (
-                <Text style={styles.moneyDetailNote}>
-                  Nobody currently owes you.
-                </Text>
-              )}
-            </View>
-          </View>
-        )}
-
-        <View style={styles.spendingToolsRow}>
-          <Pressable
-            style={[
-              styles.spendingToolButton,
-              { backgroundColor: '#EEEAFE' },
-              activeSpendingView === 'chart' && styles.spendingToolActive,
-            ]}
-            onPress={() =>
-              setActiveSpendingView(
-                activeSpendingView === 'chart' ? null : 'chart'
-              )
-            }
-          >
-            <Ionicons
-              name="stats-chart-outline"
-              size={26}
-              color="#065F46"
-            />
-
-            <Text style={styles.spendingToolTitle}>
-              Spending activity
-            </Text>
-
-            <Text style={styles.spendingToolSubtitle}>
-              View spending trends
-            </Text>
-
-            <Ionicons
-              name={activeSpendingView === 'chart' ? 'chevron-up' : 'arrow-forward'}
-              size={18}
-              color="#065F46"
-            />
-          </Pressable>
-
-          <Pressable
-            style={[
-              styles.spendingToolButton,
-              { backgroundColor: '#E6F8EF' },
-              activeSpendingView === 'calendar' && styles.spendingToolActive,
-            ]}
-            onPress={() =>
-              setActiveSpendingView(
-                activeSpendingView === 'calendar' ? null : 'calendar'
-              )
-            }
-          >
-            <Ionicons
-              name="calendar-outline"
-              size={26}
-              color="#178B67"
-            />
-
-            <Text style={styles.spendingToolTitle}>
-              Expense calendar
-            </Text>
-
-            <Text style={styles.spendingToolSubtitle}>
-              Browse by date
-            </Text>
-
-            <Ionicons
-              name={activeSpendingView === 'calendar' ? 'chevron-up' : 'arrow-forward'}
-              size={18}
-              color="#178B67"
-            />
-          </Pressable>
-        </View>
-
-
-        {/* Interactive spending chart */}
-        {activeSpendingView === 'chart' && (
-          <View style={styles.spendingVisualCard}>
-            <View style={styles.visualHeader}>
-              <Text style={styles.moneyDetailHeading}>Spending activity</Text>
-              <Text style={styles.visualSubtitle}>LAST 7 DAYS</Text>
-            </View>
-            <View style={styles.spendingChart}>
-              {lastSevenDays.map((day) => (
-                <Pressable
-                  key={day.key}
-                  style={styles.chartColumn}
-                  onPress={() => {
-                    setSelectedSpendingDate(day.key);
-                    const chosen = new Date(`${day.key}T12:00:00`);
-                    setCalendarMonth(new Date(chosen.getFullYear(), chosen.getMonth(), 1));
-                  }}
-                >
-                  <View style={styles.chartBarTrack}>
-                    <View style={[styles.chartBar, {
-                      height: `${day.amount > 0 ? Math.max(8, day.amount / maximumDailySpending * 100) : 2}%`,
-                      backgroundColor: selectedSpendingDate === day.key ? '#065F46' : '#C8BFFF',
-                    }]} />
-                  </View>
-                  <Text style={styles.chartDay}>{day.label}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <Text style={styles.visualFooter}>Tap a bar to explore daily expenses</Text>
-          </View>
-        )}
-
-        {/* Interactive expense calendar */}
-        {activeSpendingView === 'calendar' && (
-          <View style={styles.spendingVisualCard}>
-            <View style={styles.visualHeader}>
-              <Text style={styles.moneyDetailHeading}>Expense calendar</Text>
-              <View style={styles.calendarNavigation}>
-                <Pressable onPress={() => setCalendarMonth(new Date(calendarYear, calendarMonthIndex - 1, 1))}>
-                  <Ionicons name="chevron-back" size={19} color="#065F46" />
-                </Pressable>
-                <Text style={styles.calendarMonthText}>
-                  {calendarMonth.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
-                </Text>
-                <Pressable onPress={() => setCalendarMonth(new Date(calendarYear, calendarMonthIndex + 1, 1))}>
-                  <Ionicons name="chevron-forward" size={19} color="#065F46" />
-                </Pressable>
-              </View>
-            </View>
-            <View style={styles.calendarGrid}>
-              {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, index) => (
-                <View key={`heading-${index}`} style={styles.calendarCell}>
-                  <Text style={styles.calendarWeekday}>{day}</Text>
-                </View>
-              ))}
-              {Array.from({ length: calendarOffset }, (_, index) => (
-                <View key={`empty-${index}`} style={styles.calendarCell} />
-              ))}
-              {Array.from({ length: calendarDays }, (_, index) => {
-                const day = index + 1;
-                const key = dateKey(new Date(calendarYear, calendarMonthIndex, day));
-                const hasExpense = (dailySpending[key] ?? 0) > 0;
-                const selected = selectedSpendingDate === key;
-                return (
-                  <Pressable
-                    key={key}
-                    style={[styles.calendarCell, selected && styles.calendarSelected]}
-                    onPress={() => setSelectedSpendingDate(key)}
-                  >
-                    <Text style={[styles.calendarDay, selected && { color: '#FFFFFF' }]}>{day}</Text>
-                    {hasExpense && <View style={[styles.calendarDot, selected && { backgroundColor: '#FFFFFF' }]} />}
-                  </Pressable>
-                );
-              })}
-            </View>
-            {selectedSpendingDate && (
-              <View style={styles.selectedDatePanel}>
-                <View style={styles.visualHeader}>
-                  <Text style={styles.moneyDetailHeading}>
-                    {new Date(`${selectedSpendingDate}T12:00:00`).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
+                <View style={styles.emptyCard}>
+                  <Text style={styles.emptyTitle}>No saved receipts yet</Text>
+                  <Text style={styles.muted}>
+                    Scan and save a receipt to see its products and roommate claims here.
                   </Text>
-                  <Pressable onPress={() => { setSelectedSpendingDate(null); setExpandedExpenseId(null); }}>
-                    <Ionicons name="close-circle" size={22} color="#77758C" />
-                  </Pressable>
                 </View>
-                {expensesByDate.length === 0 ? (
-                  <Text style={styles.moneyDetailNote}>No expenses recorded on this date.</Text>
-                ) : expensesByDate.map((expense) => (
-                  <Pressable
-                    key={expense.id}
-                    style={styles.calendarExpenseRow}
-                    onPress={() => setExpandedExpenseId(expandedExpenseId === expense.id ? null : expense.id)}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.moneyMemberName}>{expense.title}</Text>
-                      <Text style={styles.moneyDetailNote}>Paid by {expense.paidBy?.name || 'Roommate'}</Text>
-                    </View>
-                    <Text style={styles.moneyMemberAmount}>{formatMoney(expense.amount, selectedCurrency)}</Text>
-                    <Ionicons name={expandedExpenseId === expense.id ? 'chevron-up' : 'chevron-down'} size={16} color="#77758C" />
-                    {expandedExpenseId === expense.id && (
-                      <View style={{ width: '100%', marginTop: 10 }}>
+              )}
+
+
+
+              <Text style={styles.sectionHeading}>Previous expenses</Text>
+
+              {/* Regular expenses */}
+              {recentExpenses.map((expense) => {
+                const expanded = expandedExpenseId === expense.id;
+
+                return (
+                  <View key={`expense-${expense.id}`} style={styles.premiumExpenseCard}>
+                    <Pressable
+                      style={styles.premiumExpenseMain}
+                      onPress={() =>
+                        setExpandedExpenseId(expanded ? null : expense.id)
+                      }
+                      accessibilityRole="button"
+                    >
+                      <View style={styles.premiumExpenseIcon}>
+                        <Ionicons name="cart-outline" size={22} color="#178B67" />
+                      </View>
+
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.premiumExpenseTitle} numberOfLines={1}>
+                          {expense.title}
+                        </Text>
+
+                        <Text style={styles.premiumExpenseSubtitle} numberOfLines={1}>
+                          Paid by {expense.paidBy?.name || 'Roommate'}
+                        </Text>
+
+                        <Text style={styles.premiumExpenseDate}>
+                          {expense.createdAt
+                            ? new Date(expense.createdAt).toLocaleDateString()
+                            : ''}
+                        </Text>
+                      </View>
+
+                      <View style={{ alignItems: 'flex-end', gap: 7 }}>
+                        <Text style={styles.premiumExpenseAmount}>
+                          {formatMoney(expense.amount, selectedCurrency)}
+                        </Text>
+
+                        <Ionicons
+                          name={expanded ? 'chevron-up' : 'chevron-down'}
+                          size={18}
+                          color="#77758C"
+                        />
+                      </View>
+                    </Pressable>
+
+                    {expanded && (
+                      <View style={styles.premiumExpenseDetails}>
+                        <View style={styles.premiumExpenseSplitBadge}>
+                          <Text style={styles.premiumExpenseSplitText}>
+                            {expense.splitType === 'EQUAL'
+                              ? 'Equal split'
+                              : 'Custom split'}
+                          </Text>
+                        </View>
+
                         {expense.shares.map((share) => (
-                          <View key={share.id} style={styles.moneyOwedRow}>
-                            <Text style={styles.moneyDetailNote}>{share.member?.name || 'Roommate'}</Text>
-                            <Text style={styles.moneyMemberName}>{formatMoney(share.amount, selectedCurrency)}</Text>
+                          <View key={share.id} style={styles.premiumExpenseShareRow}>
+                            <Text style={styles.premiumExpenseShareName}>
+                              {share.member?.name || 'Roommate'}
+                            </Text>
+
+                            <Text style={styles.premiumExpenseShareAmount}>
+                              {formatMoney(Number(share.amount), selectedCurrency)}
+                            </Text>
                           </View>
                         ))}
                       </View>
                     )}
-                  </Pressable>
-                ))}
-              </View>
-            )}
-          </View>
-        )}
-
-        </>)}
-        {moneyWorkspace !== null && moneyWorkspace !== 'insights' && (<>
-        <View style={styles.moneySectionRow}>
-          <Text style={styles.moneySectionTitle}>Transactions</Text>
-          <Text style={styles.moneySectionHint}>MANAGE TOGETHER</Text>
-        </View>
-
-        <View
-          style={styles.premiumTabsContainer}
-          onLayout={(event) => { transactionsY.current = event.nativeEvent.layout.y; }}
-        >
-          {([
-            { key: 'expenses', label: 'Expenses', icon: 'receipt-outline' },
-            { key: 'contributions', label: 'Contributions', icon: 'people-outline' },
-            { key: 'debts', label: 'Debts', icon: 'wallet-outline' },
-          ] as const).map((tab) => {
-            const isActive = activeTab === tab.key;
-
-            return (
-              <Pressable
-                key={tab.key}
-                style={[
-                  styles.premiumTab,
-                  isActive && styles.premiumTabActive,
-                ]}
-                onPress={() => setActiveTab(tab.key)}
-              >
-                <Ionicons
-                  name={tab.icon}
-                  size={19}
-                  color={isActive ? '#FFFFFF' : '#85839A'}
-                />
-
-                <Text
-                  style={[
-                    styles.premiumTabText,
-                    isActive && styles.premiumTabTextActive,
-                  ]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
+                  </View>
+                );
+              })}
+              {sortedExpenses.length > 3 && (
+                <Pressable
+                  style={styles.viewAllExpensesButton}
+                  onPress={() => setShowAllExpenses((previous) => !previous)}
                 >
-                  {tab.label}
-                </Text>
+                  <Text style={styles.viewAllExpensesText}>
+                    {showAllExpenses ? 'Show less' : 'View all expenses'}
+                  </Text>
 
-                {tab.key === 'debts' && pendingCount > 0 && (
-                  <View style={styles.premiumTabBadge}>
-                    <Text style={styles.premiumTabBadgeText}>
-                      {pendingCount > 99 ? '99+' : pendingCount}
+                  <Ionicons
+                    name={showAllExpenses ? 'chevron-up' : 'chevron-down'}
+                    size={17}
+                    color="#065F46"
+                  />
+                </Pressable>
+              )}
+
+              {/* Empty state */}
+              {visibleExpenses.length === 0 &&
+                visibleReceipts.length === 0 && (
+                  <View style={styles.emptyCard}>
+                    <Text style={styles.emptyTitle}>No expenses yet</Text>
+                    <Text style={styles.muted}>
+                      Add an expense or upload a receipt to start tracking
+                      apartment spending.
                     </Text>
                   </View>
                 )}
-              </Pressable>
-            );
-          })}
-        </View>
 
-        {activeTab === 'expenses' ? (
-          <>
-            <Pressable
-              style={styles.addExpenseCard}
-              onPress={() => setShowExpenseForm((value) => !value)}
-              accessibilityRole="button"
-              accessibilityLabel={showExpenseForm ? 'Cancel adding expense' : 'Add new expense'}
-            >
-              <View style={styles.addExpenseIconBox}>
+            </>
+          ) : activeTab === 'debts' ? (
+            <>
+              <Text style={settleDesign.heading}>Settle up with roommates</Text>
+              <Text style={settleDesign.description}>See who owes whom. Roomie records payments you make outside the app.</Text>
+              {debtLoading && <ActivityIndicator color="#065F46" />}
+              {pendingRepayments.filter(p => p.currency === selectedCurrency).length > 0 && (
+                <View style={settleDesign.attentionBox}>
+                  <Text style={settleDesign.attentionHeading}>Payments to review</Text>
+                  {pendingRepayments.filter(p => p.currency === selectedCurrency).map(payment => (
+                    <View key={payment.id} style={settleDesign.approvalCard}>
+                      <Text style={settleDesign.personTitle}>{payment.fromMember.name} says they paid {formatMoney(payment.amount, selectedCurrency)}</Text>
+                      <Text style={settleDesign.detailMuted}>For {payment.expenseTitle}. Confirm only if you received the money.</Text>
+                      <View style={settleDesign.actionButtons}>
+                        <Pressable disabled={saving} onPress={() => decideRepayment(payment.id, 'CONFIRMED')} style={settleDesign.primarySmall}><Text style={settleDesign.primarySmallText}>I received it</Text></Pressable>
+                        <Pressable disabled={saving} onPress={() => decideRepayment(payment.id, 'REJECTED')} style={settleDesign.secondarySmall}><Text style={settleDesign.secondarySmallText}>Not received</Text></Pressable>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+              <Text style={settleDesign.groupHeading}>You owe</Text>
+              {roommateDebtGroups.length === 0 && <Text style={settleDesign.empty}>You're all caught up in {selectedCurrency}.</Text>}
+              {roommateDebtGroups.map(group => (
+                <View key={group.member.id} style={settleDesign.personCard}>
+                  <Pressable onPress={() => setSelectedSettlement(v => v === group.member.id ? null : group.member.id)} style={settleDesign.personRow}>
+                    <View style={settleDesign.avatar}><Text style={settleDesign.avatarText}>{group.member.name.charAt(0).toUpperCase()}</Text></View>
+                    <View style={{ flex: 1 }}><Text style={settleDesign.personTitle}>{group.member.name}</Text><Text style={settleDesign.detailMuted}>You owe · {group.debts.length} expense{group.debts.length === 1 ? '' : 's'}</Text><Text style={settleDesign.personAmount}>{formatMoney(group.total, selectedCurrency)}</Text></View>
+                    <View style={settleDesign.settlePill}><Text style={settleDesign.settlePillText}>{selectedSettlement === group.member.id ? 'Close' : 'Settle'}</Text></View>
+                  </Pressable>
+                  {selectedSettlement === group.member.id && (
+                    <View style={settleDesign.detailArea}>
+                      <Text style={settleDesign.detailHeading}>What you owe {group.member.name}</Text>
+                      <Text style={settleDesign.detailMuted}>Choose an expense below after you've paid. Payments are confirmed by {group.member.name}.</Text>
+                      {group.debts.map(debt => {
+                        const key = `${debt.expenseId}:${debt.fromMember.id}`;
+                        const available = Math.max(0, Number(debt.remainingAmount) - Number(debt.pendingAmount || 0));
+                        return <View key={key} style={settleDesign.expenseItem}>
+                          <View style={settleDesign.expenseTop}><Text style={settleDesign.expenseTitle}>{debt.expenseTitle}</Text><Text style={settleDesign.expenseAmount}>{formatMoney(debt.remainingAmount, selectedCurrency)}</Text></View>
+                          {Number(debt.pendingAmount || 0) > 0 && <Text style={settleDesign.pendingText}>{formatMoney(debt.pendingAmount, selectedCurrency)} awaiting confirmation</Text>}
+                          {available > 0 && <>
+                            <Text style={settleDesign.fieldLabel}>Amount you've already paid (max {formatMoney(available, selectedCurrency)})</Text>
+                            <View style={settleDesign.payRow}>
+                              <TextInput style={settleDesign.amountInput} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor="#AAA4B9" value={repaymentInputs[key] ?? ''} onChangeText={v => setRepaymentInputs(old => ({ ...old, [key]: v }))} />
+                              <Pressable onPress={() => setRepaymentInputs(old => ({ ...old, [key]: available.toFixed(2) }))} style={settleDesign.fullPill}><Text style={settleDesign.fullPillText}>Full</Text></Pressable>
+                            </View>
+                            <Pressable disabled={saving} onPress={() => submitRepayment(debt)} style={settleDesign.confirmButton}><Text style={settleDesign.confirmText}>I've paid {group.member.name}</Text><Ionicons name="arrow-forward" color="#FFFFFF" size={17} /></Pressable>
+                          </>}
+                        </View>;
+                      })}
+                      <Text style={settleDesign.disclaimer}>Roomie doesn't transfer money. This only tells your roommate that you've paid them.</Text>
+                    </View>
+                  )}
+                </View>
+              ))}
+              <Text style={settleDesign.groupHeading}>Owed to you</Text>
+              {owedToMe.length === 0 && <Text style={settleDesign.empty}>Nobody owes you in {selectedCurrency}.</Text>}
+              {Object.values(owedToMe.reduce<Record<string, { member: Member, total: number, count: number }>>((acc, debt) => { const id = debt.fromMember.id; if (!acc[id]) acc[id] = { member: debt.fromMember, total: 0, count: 0 }; acc[id].total += Number(debt.remainingAmount); acc[id].count++; return acc; }, {})).map(group => (
+                <View key={group.member.id} style={settleDesign.personRowCard}>
+                  <View style={[settleDesign.avatar, { backgroundColor: '#E5F4EB' }]}><Text style={[settleDesign.avatarText, { color: '#32835D' }]}>{group.member.name.charAt(0).toUpperCase()}</Text></View>
+                  <View style={{ flex: 1 }}><Text style={settleDesign.personTitle}>{group.member.name}</Text><Text style={settleDesign.detailMuted}>Owes you · {group.count} expense{group.count === 1 ? '' : 's'}</Text></View>
+                  <Text style={settleDesign.owedAmount}>{formatMoney(group.total, selectedCurrency)}</Text>
+                </View>
+              ))}
+              <Text style={settleDesign.groupHeading}>Payment activity</Text>
+              {paymentActivity.filter(p => p.currency === selectedCurrency).slice(0, 12).map(payment => (
+                <View key={payment.id} style={settleDesign.historyRow}>
+                  <View style={{ flex: 1 }}><Text style={settleDesign.personTitle}>{payment.isSender ? `To ${payment.toMember.name}` : `From ${payment.fromMember.name}`}</Text><Text style={settleDesign.detailMuted}>{payment.expenseTitle} · {new Date(payment.createdAt).toLocaleDateString()}</Text></View>
+                  <View style={{ alignItems: 'flex-end' }}><Text style={settleDesign.expenseAmount}>{formatMoney(payment.amount, selectedCurrency)}</Text><Text style={[settleDesign.detailMuted, { color: payment.status === 'CONFIRMED' ? '#26805A' : payment.status === 'REJECTED' ? '#B85B51' : '#A77B38' }]}>{payment.status === 'CONFIRMED' ? 'Confirmed' : payment.status === 'REJECTED' ? 'Not confirmed' : 'Waiting'}</Text></View>
+                </View>
+              ))}
+            </>
+          ) : (
+            <>
+              <Pressable
+                style={styles.addContributionCard}
+                onPress={() => setShowContributionForm((value) => !value)}
+              >
+                <View style={styles.addContributionIcon}>
+                  <Ionicons
+                    name={showContributionForm ? 'close' : 'add'}
+                    size={26}
+                    color="#FFFFFF"
+                  />
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.addContributionTitle}>
+                    {showContributionForm
+                      ? 'Cancel new target'
+                      : 'Create contribution target'}
+                  </Text>
+
+                  <Text style={styles.addContributionSubtitle}>
+                    {showContributionForm
+                      ? 'Close the contribution form'
+                      : 'Collect money together for shared plans'}
+                  </Text>
+                </View>
+
                 <Ionicons
-                  name={showExpenseForm ? 'close' : 'add'}
-                  size={27}
+                  name={showContributionForm ? 'chevron-up' : 'arrow-forward'}
+                  size={20}
                   color="#FFFFFF"
                 />
-              </View>
-
-              <View style={{ flex: 1 }}>
-                <Text style={styles.addExpenseTitle}>
-                  {showExpenseForm ? 'Cancel new expense' : 'Add new expense'}
-                </Text>
-
-                <Text style={styles.addExpenseSubtitle}>
-                  {showExpenseForm
-                    ? 'Close the expense form'
-                    : 'Split a payment with roommates'}
-                </Text>
-              </View>
-
-              <Ionicons
-                name={showExpenseForm ? 'chevron-up' : 'arrow-forward'}
-                size={21}
-                color="#FFFFFF"
-              />
-            </Pressable>
-
-            {showExpenseForm && (
-              <View style={styles.formCard}>
-                <Text style={styles.sectionHeading}>New expense · {selectedCurrency}</Text>
-
-                <Text style={styles.inputLabel}>EXPENSE NAME</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g. Groceries"
-                  placeholderTextColor="#9298A6"
-                  value={expenseTitle}
-                  onChangeText={setExpenseTitle}
-                />
-
-                <Text style={styles.inputLabel}>TOTAL AMOUNT ({selectedCurrency})</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="0.00"
-                  placeholderTextColor="#9298A6"
-                  value={expenseAmount}
-                  onChangeText={setExpenseAmount}
-                  keyboardType="decimal-pad"
-                />
-
-                <Text style={styles.premiumFormSectionTitle}>Who paid?</Text>
-
-                <View style={styles.payerGrid}>
-                  {(data?.members ?? []).map((member) => {
-                    const selected = paidById === member.id;
-
-                    return (
-                      <Pressable
-                        key={member.id}
-                        style={[
-                          styles.payerCard,
-                          selected && styles.payerCardSelected,
-                        ]}
-                        onPress={() => setPaidById(member.id)}
-                      >
-                        <View
-                          style={[
-                            styles.payerAvatar,
-                            selected && styles.payerAvatarSelected,
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.payerInitial,
-                              selected && { color: '#FFFFFF' },
-                            ]}
-                          >
-                            {member.name.charAt(0).toUpperCase()}
-                          </Text>
-                        </View>
-
-                        <Text
-                          style={styles.payerName}
-                          numberOfLines={1}
-                        >
-                          {member.id === memberId ? 'You' : member.name}
-                        </Text>
-
-                        {selected && (
-                          <Ionicons
-                            name="checkmark-circle"
-                            size={18}
-                            color="#065F46"
-                          />
-                        )}
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-                <Text style={styles.premiumFormSectionTitle}>How to split?</Text>
-
-                <View style={styles.premiumSplitRow}>
-                  <Pressable
-                    style={[
-                      styles.premiumSplitCard,
-                      splitType === 'EQUAL' && styles.premiumSplitSelected,
-                    ]}
-                    onPress={() => setSplitType('EQUAL')}
-                  >
-                    <Ionicons
-                      name="people-outline"
-                      size={23}
-                      color={splitType === 'EQUAL' ? '#065F46' : '#85839A'}
-                    />
-
-                    <Text style={styles.premiumSplitTitle}>
-                      Split equally
-                    </Text>
-
-                    <Text style={styles.premiumSplitSubtitle}>
-                      Same share for everyone
-                    </Text>
-
-                    {splitType === 'EQUAL' && (
-                      <Ionicons name="checkmark-circle" size={18} color="#065F46" />
-                    )}
-                  </Pressable>
-
-                  <Pressable
-                    style={[
-                      styles.premiumSplitCard,
-                      splitType === 'CUSTOM' && styles.premiumSplitSelected,
-                    ]}
-                    onPress={() => setSplitType('CUSTOM')}
-                  >
-                    <Ionicons
-                      name="options-outline"
-                      size={23}
-                      color={splitType === 'CUSTOM' ? '#065F46' : '#85839A'}
-                    />
-
-                    <Text style={styles.premiumSplitTitle}>
-                      Custom split
-                    </Text>
-
-                    <Text style={styles.premiumSplitSubtitle}>
-                      Set individual amounts
-                    </Text>
-
-                    {splitType === 'CUSTOM' && (
-                      <Ionicons name="checkmark-circle" size={18} color="#065F46" />
-                    )}
-                  </Pressable>
-                </View>
-
-                {splitType === 'EQUAL' ? (
-                  <Text style={styles.helper}>
-                    The amount will be divided between all apartment members.
-                    Any extra cents are allocated fairly.
-                  </Text>
-                ) : (
-                  <>
-                    <Text style={styles.helper}>
-                      Enter each roommate's share. Use 0 for anyone who owes
-                      nothing. All amounts must add up to the total.
-                    </Text>
-                    <View style={styles.splitSummaryCard}>
-                      <Text style={styles.splitSummaryLabel}>TOTAL EXPENSE</Text>
-
-                      <Text style={styles.splitSummaryTotal}>
-                        {formatMoney(expenseTotalCents / 100, selectedCurrency)}
-                      </Text>
-
-                      <View style={styles.splitSummaryDivider} />
-
-                      <View style={styles.splitSummaryRow}>
-                        <Text style={styles.splitSummaryMuted}>
-                          Amount allocated
-                        </Text>
-                        <Text style={styles.splitSummaryValue}>
-                          {formatMoney(allocatedCents / 100, selectedCurrency)}
-                        </Text>
-                      </View>
-
-                      <View style={styles.splitProgressTrack}>
-                        <View
-                          style={[
-                            styles.splitProgressFill,
-                            {
-                              width: `${expenseTotalCents > 0
-                                ? Math.min(
-                                  100,
-                                  Math.max(0, (allocatedCents / expenseTotalCents) * 100)
-                                )
-                                : 0
-                                }%`,
-                            },
-                          ]}
-                        />
-                      </View>
-
-                      <View style={styles.splitSummaryRow}>
-                        <Text style={styles.splitSummaryMuted}>
-                          Remaining to allocate
-                        </Text>
-                        <Text
-                          style={[
-                            styles.splitRemainingValue,
-                            remainingCents !== 0 && { color: '#C96A57' },
-                          ]}
-                        >
-                          {formatMoney(remainingCents / 100, selectedCurrency)}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <Text style={styles.premiumFormSectionTitle}>
-                      Roommate shares
-                    </Text>
-
-                    {(data?.members ?? []).map((member) => (
-                      <View key={member.id} style={styles.customShareCard}>
-                        <View style={styles.customShareAvatar}>
-                          <Text style={styles.customShareInitial}>
-                            {member.name.charAt(0).toUpperCase()}
-                          </Text>
-                        </View>
-
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.customShareName}>
-                            {member.id === memberId ? 'You' : member.name}
-                          </Text>
-                          <Text style={styles.customShareHint}>
-                            Custom amount
-                          </Text>
-                        </View>
-
-                        <View style={styles.customShareInputWrap}>
-                          <Text style={styles.customShareCurrency}>
-                            {selectedCurrency === 'EUR' ? '€' : 'Kč'}
-                          </Text>
-
-                          <TextInput
-                            style={styles.customShareInput}
-                            placeholder="0.00"
-                            placeholderTextColor="#AAA6B8"
-                            keyboardType="decimal-pad"
-                            value={customShares[member.id] ?? ''}
-                            onChangeText={(value) =>
-                              updateCustomShare(member.id, value)
-                            }
-                          />
-                        </View>
-                      </View>
-                    ))}
-
-                    <View style={styles.splitValidationRow}>
-                      <Ionicons
-                        name={
-                          isCustomSplitValid
-                            ? 'checkmark-circle'
-                            : 'alert-circle-outline'
-                        }
-                        size={19}
-                        color={isCustomSplitValid ? '#178B67' : '#C96A57'}
-                      />
-
-                      <Text
-                        style={[
-                          styles.splitValidationText,
-                          {
-                            color: isCustomSplitValid ? '#178B67' : '#C96A57',
-                          },
-                        ]}
-                      >
-                        {isCustomSplitValid
-                          ? 'All shares are allocated correctly'
-                          : 'Shares must equal the total expense'}
-                      </Text>
-                    </View>
-                  </>
-                )}
-
-                <Pressable
-                  style={[
-                    styles.premiumSaveExpenseButton,
-                    (saving || (splitType === 'CUSTOM' && !isCustomSplitValid)) &&
-                    styles.premiumSaveExpenseDisabled,
-                  ]}
-                  disabled={
-                    saving || (splitType === 'CUSTOM' && !isCustomSplitValid)
-                  }
-                  onPress={submitExpense}
-                >
-                  {saving ? (
-                    <ActivityIndicator color="#FFFFFF" />
-                  ) : (
-                    <>
-                      <Ionicons
-                        name="checkmark-circle-outline"
-                        size={22}
-                        color="#FFFFFF"
-                      />
-
-                      <Text style={styles.premiumSaveExpenseText}>
-                        Save expense
-                      </Text>
-
-                      <Ionicons
-                        name="arrow-forward"
-                        size={19}
-                        color="#FFFFFF"
-                      />
-                    </>
-                  )}
-                </Pressable>
-              </View>
-            )}
-            <Text style={styles.sectionHeading}>Smart Receipt Claims</Text>
-            {(data?.receipts ?? []).some((receipt) => !normalizeCurrency(receipt.currency)) && (
-              <Text style={styles.helper}>
-                Some older receipts have an unrecognized currency and are hidden until corrected.
-              </Text>
-            )}
-
-            {visibleReceipts.length ? (
-              visibleReceipts.map((receipt) => (
-                <View key={receipt.id} style={styles.premiumReceiptCard}>
-                  <Pressable
-                    style={styles.premiumReceiptMain}
-                    onPress={() => router.push(`/receipt/${receipt.id}` as never)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Open receipt from ${receipt.store || 'shop'}`}
-                  >
-                    <View style={styles.premiumReceiptIcon}>
-                      <Ionicons name="receipt-outline" size={24} color="#065F46" />
-                    </View>
-
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.premiumReceiptTitle} numberOfLines={1}>
-                        {receipt.store || 'Receipt'}
-                      </Text>
-
-                      <Text style={styles.premiumReceiptSubtitle} numberOfLines={1}>
-                        Uploaded by {receipt.uploader?.name || 'Roommate'}
-                      </Text>
-
-                      <Text style={styles.premiumReceiptDate}>
-                        {receipt.createdAt
-                          ? new Date(receipt.createdAt).toLocaleDateString()
-                          : ''}
-                      </Text>
-                    </View>
-
-                    <View style={{ alignItems: 'flex-end', gap: 7 }}>
-                      <Text style={styles.premiumReceiptAmount}>
-                        {formatMoney(receipt.total, selectedCurrency)}
-                      </Text>
-                      <Ionicons name="chevron-forward" size={18} color="#065F46" />
-                    </View>
-                  </Pressable>
-
-                  <View style={styles.premiumReceiptFooter}>
-                    <View style={styles.premiumReceiptBadge}>
-                      <Ionicons name="sparkles-outline" size={14} color="#065F46" />
-                      <Text style={styles.premiumReceiptBadgeText}>Smart receipt</Text>
-                    </View>
-
-                    {receipt.uploader?.id === memberId && receipt.status === 'OPEN' ? (
-                      <Pressable
-                        disabled={saving}
-                        onPress={() => deleteReceipt(receipt.id)}
-                        style={styles.premiumReceiptDelete}
-                      >
-                        <Ionicons name="trash-outline" size={15} color="#C96A57" />
-                        <Text style={styles.premiumReceiptDeleteText}>Delete</Text>
-                      </Pressable>
-                    ) : (
-                      <Pressable
-                        onPress={() => router.push(`/receipt/${receipt.id}` as never)}
-                      >
-                        <Text style={styles.premiumReceiptView}>View items →</Text>
-                      </Pressable>
-                    )}
-                  </View>
-                </View>
-              ))
-            ) : (
-              <View style={styles.emptyCard}>
-                <Text style={styles.emptyTitle}>No saved receipts yet</Text>
-                <Text style={styles.muted}>
-                  Scan and save a receipt to see its products and roommate claims here.
-                </Text>
-              </View>
-            )}
-
-
-
-            <Text style={styles.sectionHeading}>Previous expenses</Text>
-
-            {/* Regular expenses */}
-            {recentExpenses.map((expense) => {
-              const expanded = expandedExpenseId === expense.id;
-
-              return (
-                <View key={`expense-${expense.id}`} style={styles.premiumExpenseCard}>
-                  <Pressable
-                    style={styles.premiumExpenseMain}
-                    onPress={() =>
-                      setExpandedExpenseId(expanded ? null : expense.id)
-                    }
-                    accessibilityRole="button"
-                  >
-                    <View style={styles.premiumExpenseIcon}>
-                      <Ionicons name="cart-outline" size={22} color="#178B67" />
-                    </View>
-
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.premiumExpenseTitle} numberOfLines={1}>
-                        {expense.title}
-                      </Text>
-
-                      <Text style={styles.premiumExpenseSubtitle} numberOfLines={1}>
-                        Paid by {expense.paidBy?.name || 'Roommate'}
-                      </Text>
-
-                      <Text style={styles.premiumExpenseDate}>
-                        {expense.createdAt
-                          ? new Date(expense.createdAt).toLocaleDateString()
-                          : ''}
-                      </Text>
-                    </View>
-
-                    <View style={{ alignItems: 'flex-end', gap: 7 }}>
-                      <Text style={styles.premiumExpenseAmount}>
-                        {formatMoney(expense.amount, selectedCurrency)}
-                      </Text>
-
-                      <Ionicons
-                        name={expanded ? 'chevron-up' : 'chevron-down'}
-                        size={18}
-                        color="#77758C"
-                      />
-                    </View>
-                  </Pressable>
-
-                  {expanded && (
-                    <View style={styles.premiumExpenseDetails}>
-                      <View style={styles.premiumExpenseSplitBadge}>
-                        <Text style={styles.premiumExpenseSplitText}>
-                          {expense.splitType === 'EQUAL'
-                            ? 'Equal split'
-                            : 'Custom split'}
-                        </Text>
-                      </View>
-
-                      {expense.shares.map((share) => (
-                        <View key={share.id} style={styles.premiumExpenseShareRow}>
-                          <Text style={styles.premiumExpenseShareName}>
-                            {share.member?.name || 'Roommate'}
-                          </Text>
-
-                          <Text style={styles.premiumExpenseShareAmount}>
-                            {formatMoney(Number(share.amount), selectedCurrency)}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              );
-            })}
-            {sortedExpenses.length > 3 && (
-              <Pressable
-                style={styles.viewAllExpensesButton}
-                onPress={() => setShowAllExpenses((previous) => !previous)}
-              >
-                <Text style={styles.viewAllExpensesText}>
-                  {showAllExpenses ? 'Show less' : 'View all expenses'}
-                </Text>
-
-                <Ionicons
-                  name={showAllExpenses ? 'chevron-up' : 'chevron-down'}
-                  size={17}
-                  color="#065F46"
-                />
               </Pressable>
-            )}
 
-            {/* Empty state */}
-            {visibleExpenses.length === 0 &&
-              visibleReceipts.length === 0 && (
-                <View style={styles.emptyCard}>
-                  <Text style={styles.emptyTitle}>No expenses yet</Text>
-                  <Text style={styles.muted}>
-                    Add an expense or upload a receipt to start tracking
-                    apartment spending.
-                  </Text>
+              {showContributionForm && (
+                <View style={styles.formCard}>
+                  <Text style={styles.sectionHeading}>New contribution target · {selectedCurrency}</Text>
+
+                  <Text style={styles.inputLabel}>WHAT IS IT FOR?</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. Party food"
+                    placeholderTextColor="#9298A6"
+                    value={requestTitle}
+                    onChangeText={setRequestTitle}
+                  />
+
+                  <Text style={styles.inputLabel}>TARGET AMOUNT ({selectedCurrency})</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="100.00"
+                    placeholderTextColor="#9298A6"
+                    value={targetAmount}
+                    onChangeText={setTargetAmount}
+                    keyboardType="decimal-pad"
+                  />
+
+                  <Pressable
+                    style={[styles.primaryButton, saving && styles.disabled]}
+                    disabled={saving}
+                    onPress={submitContributionRequest}
+                  >
+                    {saving ? (
+                      <ActivityIndicator color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.primaryButtonText}>Create target</Text>
+                    )}
+                  </Pressable>
                 </View>
               )}
 
-          </>
-        ) : activeTab === 'debts' ? (
-          <>
-            <Text style={settleDesign.heading}>Settle up with roommates</Text>
-            <Text style={settleDesign.description}>See who owes whom. Roomie records payments you make outside the app.</Text>
-            {debtLoading && <ActivityIndicator color="#065F46" />}
-            {pendingRepayments.filter(p => p.currency === selectedCurrency).length > 0 && (
-              <View style={settleDesign.attentionBox}>
-                <Text style={settleDesign.attentionHeading}>Payments to review</Text>
-                {pendingRepayments.filter(p => p.currency === selectedCurrency).map(payment => (
-                  <View key={payment.id} style={settleDesign.approvalCard}>
-                    <Text style={settleDesign.personTitle}>{payment.fromMember.name} says they paid {formatMoney(payment.amount, selectedCurrency)}</Text>
-                    <Text style={settleDesign.detailMuted}>For {payment.expenseTitle}. Confirm only if you received the money.</Text>
-                    <View style={settleDesign.actionButtons}>
-                      <Pressable disabled={saving} onPress={() => decideRepayment(payment.id,'CONFIRMED')} style={settleDesign.primarySmall}><Text style={settleDesign.primarySmallText}>I received it</Text></Pressable>
-                      <Pressable disabled={saving} onPress={() => decideRepayment(payment.id,'REJECTED')} style={settleDesign.secondarySmall}><Text style={settleDesign.secondarySmallText}>Not received</Text></Pressable>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            )}
-            <Text style={settleDesign.groupHeading}>You owe</Text>
-            {roommateDebtGroups.length === 0 && <Text style={settleDesign.empty}>You're all caught up in {selectedCurrency}.</Text>}
-            {roommateDebtGroups.map(group => (
-              <View key={group.member.id} style={settleDesign.personCard}>
-                <Pressable onPress={() => setSelectedSettlement(v => v === group.member.id ? null : group.member.id)} style={settleDesign.personRow}>
-                  <View style={settleDesign.avatar}><Text style={settleDesign.avatarText}>{group.member.name.charAt(0).toUpperCase()}</Text></View>
-                  <View style={{flex:1}}><Text style={settleDesign.personTitle}>{group.member.name}</Text><Text style={settleDesign.detailMuted}>You owe · {group.debts.length} expense{group.debts.length === 1 ? '' : 's'}</Text><Text style={settleDesign.personAmount}>{formatMoney(group.total, selectedCurrency)}</Text></View>
-                  <View style={settleDesign.settlePill}><Text style={settleDesign.settlePillText}>{selectedSettlement === group.member.id ? 'Close' : 'Settle'}</Text></View>
-                </Pressable>
-                {selectedSettlement === group.member.id && (
-                  <View style={settleDesign.detailArea}>
-                    <Text style={settleDesign.detailHeading}>What you owe {group.member.name}</Text>
-                    <Text style={settleDesign.detailMuted}>Choose an expense below after you've paid. Payments are confirmed by {group.member.name}.</Text>
-                    {group.debts.map(debt => {
-                      const key = `${debt.expenseId}:${debt.fromMember.id}`;
-                      const available = Math.max(0, Number(debt.remainingAmount) - Number(debt.pendingAmount || 0));
-                      return <View key={key} style={settleDesign.expenseItem}>
-                        <View style={settleDesign.expenseTop}><Text style={settleDesign.expenseTitle}>{debt.expenseTitle}</Text><Text style={settleDesign.expenseAmount}>{formatMoney(debt.remainingAmount, selectedCurrency)}</Text></View>
-                        {Number(debt.pendingAmount || 0) > 0 && <Text style={settleDesign.pendingText}>{formatMoney(debt.pendingAmount, selectedCurrency)} awaiting confirmation</Text>}
-                        {available > 0 && <>
-                          <Text style={settleDesign.fieldLabel}>Amount you've already paid (max {formatMoney(available, selectedCurrency)})</Text>
-                          <View style={settleDesign.payRow}>
-                            <TextInput style={settleDesign.amountInput} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor="#AAA4B9" value={repaymentInputs[key] ?? ''} onChangeText={v => setRepaymentInputs(old => ({...old,[key]:v}))}/>
-                            <Pressable onPress={() => setRepaymentInputs(old => ({...old,[key]:available.toFixed(2)}))} style={settleDesign.fullPill}><Text style={settleDesign.fullPillText}>Full</Text></Pressable>
+              <Text style={styles.sectionHeading}>Contribution targets</Text>
+
+              {visibleRequests.length ? (
+                visibleRequests.map((request) => {
+                  const progress =
+                    request.targetAmount > 0
+                      ? Math.min(
+                        Math.max(request.contributedAmount / request.targetAmount, 0),
+                        1
+                      )
+                      : 0;
+
+                  const completed = request.remainingAmount <= 0;
+
+                  return (
+                    <View key={request.id} style={styles.premiumContributionCard}>
+
+                      {/* Header */}
+                      <View style={styles.contributionHeader}>
+                        <View style={styles.contributionIconBox}>
+                          <Ionicons
+                            name="people-outline"
+                            size={23}
+                            color="#065F46"
+                          />
+                        </View>
+
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.contributionTitle}>
+                            {request.title}
+                          </Text>
+
+                          <Text style={styles.contributionSubtitle}>
+                            Started by {request.createdBy?.name || 'Roommate'}
+                          </Text>
+                        </View>
+
+                        {completed && (
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={24}
+                            color="#178B67"
+                          />
+                        )}
+                      </View>
+
+                      {/* Amount collected */}
+                      <View style={styles.contributionAmountPanel}>
+                        <Text style={styles.contributionAmountLabel}>
+                          TOTAL COLLECTED
+                        </Text>
+
+                        <Text style={styles.contributionAmount}>
+                          {formatMoney(request.contributedAmount, selectedCurrency)}
+                        </Text>
+
+                        <Text style={styles.contributionTargetText}>
+                          of {formatMoney(request.targetAmount, selectedCurrency)} target
+                        </Text>
+
+                        <View style={styles.contributionProgressTrack}>
+                          <View
+                            style={[
+                              styles.contributionProgressFill,
+                              { width: `${progress * 100}%` },
+                            ]}
+                          />
+                        </View>
+
+                        <View style={styles.contributionProgressFooter}>
+                          <Text style={styles.contributionProgressPercent}>
+                            {Math.round(progress * 100)}% collected
+                          </Text>
+
+                          <Text style={styles.contributionRemaining}>
+                            {completed
+                              ? 'Target reached!'
+                              : `${formatMoney(request.remainingAmount, selectedCurrency)} left`}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Contributions from roommates */}
+                      {request.contributions.length > 0 && (
+                        <View style={styles.contributionMembersSection}>
+                          <Text style={styles.contributionSectionLabel}>
+                            CONTRIBUTIONS
+                          </Text>
+
+                          {request.contributions.map((contribution) => (
+                            <View
+                              key={contribution.id}
+                              style={styles.contributionMemberRow}
+                            >
+                              <View style={styles.contributionMemberAvatar}>
+                                <Text style={styles.contributionMemberInitial}>
+                                  {(contribution.member?.name || 'R')
+                                    .charAt(0)
+                                    .toUpperCase()}
+                                </Text>
+                              </View>
+
+                              <Text style={styles.contributionMemberName}>
+                                {contribution.memberId === memberId
+                                  ? 'You'
+                                  : contribution.member?.name || 'Roommate'}
+                              </Text>
+
+                              <Text style={styles.contributionMemberAmount}>
+                                {formatMoney(contribution.amount, selectedCurrency)}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+
+                      {/* Add contribution */}
+                      {!completed && (
+                        <View style={styles.premiumContributeBox}>
+                          <Text style={styles.contributionSectionLabel}>
+                            ADD YOUR CONTRIBUTION
+                          </Text>
+
+                          <View style={styles.contributionInputRow}>
+                            <View style={styles.contributionInputWrapper}>
+                              <Text style={styles.contributionCurrencySymbol}>
+                                {selectedCurrency === 'EUR' ? '€' : 'Kč'}
+                              </Text>
+
+                              <TextInput
+                                style={styles.contributionAmountInput}
+                                placeholder="0.00"
+                                placeholderTextColor="#AAA6B8"
+                                value={contributionInputs[request.id] ?? ''}
+                                onChangeText={(value) =>
+                                  setContributionInputs((previous) => ({
+                                    ...previous,
+                                    [request.id]: value,
+                                  }))
+                                }
+                                keyboardType="decimal-pad"
+                              />
+                            </View>
+
+                            <Pressable
+                              style={[
+                                styles.premiumContributeButton,
+                                saving && styles.disabled,
+                              ]}
+                              disabled={saving}
+                              onPress={() => submitContribution(request.id)}
+                            >
+                              {saving ? (
+                                <ActivityIndicator color="#FFFFFF" />
+                              ) : (
+                                <>
+                                  <Ionicons
+                                    name="add-circle-outline"
+                                    size={19}
+                                    color="#FFFFFF"
+                                  />
+                                  <Text style={styles.premiumContributeButtonText}>
+                                    Add
+                                  </Text>
+                                </>
+                              )}
+                            </Pressable>
                           </View>
-                          <Pressable disabled={saving} onPress={() => submitRepayment(debt)} style={settleDesign.confirmButton}><Text style={settleDesign.confirmText}>I've paid {group.member.name}</Text><Ionicons name="arrow-forward" color="#FFFFFF" size={17}/></Pressable>
-                        </>}
-                      </View>;
-                    })}
-                    <Text style={settleDesign.disclaimer}>Roomie doesn't transfer money. This only tells your roommate that you've paid them.</Text>
-                  </View>
-                )}
-              </View>
-            ))}
-            <Text style={settleDesign.groupHeading}>Owed to you</Text>
-            {owedToMe.length === 0 && <Text style={settleDesign.empty}>Nobody owes you in {selectedCurrency}.</Text>}
-            {Object.values(owedToMe.reduce<Record<string,{member:Member,total:number,count:number}>>((acc,debt) => { const id=debt.fromMember.id; if(!acc[id]) acc[id]={member:debt.fromMember,total:0,count:0};acc[id].total+=Number(debt.remainingAmount);acc[id].count++;return acc;},{})).map(group => (
-              <View key={group.member.id} style={settleDesign.personRowCard}>
-                <View style={[settleDesign.avatar,{backgroundColor:'#E5F4EB'}]}><Text style={[settleDesign.avatarText,{color:'#32835D'}]}>{group.member.name.charAt(0).toUpperCase()}</Text></View>
-                <View style={{flex:1}}><Text style={settleDesign.personTitle}>{group.member.name}</Text><Text style={settleDesign.detailMuted}>Owes you · {group.count} expense{group.count === 1 ? '' : 's'}</Text></View>
-                <Text style={settleDesign.owedAmount}>{formatMoney(group.total, selectedCurrency)}</Text>
-              </View>
-            ))}
-            <Text style={settleDesign.groupHeading}>Payment activity</Text>
-            {paymentActivity.filter(p => p.currency === selectedCurrency).slice(0,12).map(payment => (
-              <View key={payment.id} style={settleDesign.historyRow}>
-                <View style={{flex:1}}><Text style={settleDesign.personTitle}>{payment.isSender ? `To ${payment.toMember.name}` : `From ${payment.fromMember.name}`}</Text><Text style={settleDesign.detailMuted}>{payment.expenseTitle} · {new Date(payment.createdAt).toLocaleDateString()}</Text></View>
-                <View style={{alignItems:'flex-end'}}><Text style={settleDesign.expenseAmount}>{formatMoney(payment.amount, selectedCurrency)}</Text><Text style={[settleDesign.detailMuted,{color:payment.status==='CONFIRMED'?'#26805A':payment.status==='REJECTED'?'#B85B51':'#A77B38'}]}>{payment.status === 'CONFIRMED' ? 'Confirmed' : payment.status === 'REJECTED' ? 'Not confirmed' : 'Waiting'}</Text></View>
-              </View>
-            ))}
-          </>
-        ) : (
-          <>
-            <Pressable
-  style={styles.addContributionCard}
-  onPress={() => setShowContributionForm((value) => !value)}
->
-  <View style={styles.addContributionIcon}>
-    <Ionicons
-      name={showContributionForm ? 'close' : 'add'}
-      size={26}
-      color="#FFFFFF"
-    />
-  </View>
+                        </View>
+                      )}
 
-  <View style={{ flex: 1 }}>
-    <Text style={styles.addContributionTitle}>
-      {showContributionForm
-        ? 'Cancel new target'
-        : 'Create contribution target'}
-    </Text>
+                      {completed && (
+                        <View style={styles.contributionCompletedRow}>
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={18}
+                            color="#178B67"
+                          />
+                          <Text style={styles.contributionCompletedText}>
+                            Contribution target completed
+                          </Text>
+                        </View>
+                      )}
 
-    <Text style={styles.addContributionSubtitle}>
-      {showContributionForm
-        ? 'Close the contribution form'
-        : 'Collect money together for shared plans'}
-    </Text>
-  </View>
-
-  <Ionicons
-    name={showContributionForm ? 'chevron-up' : 'arrow-forward'}
-    size={20}
-    color="#FFFFFF"
-  />
-</Pressable>
-
-            {showContributionForm && (
-              <View style={styles.formCard}>
-                <Text style={styles.sectionHeading}>New contribution target · {selectedCurrency}</Text>
-
-                <Text style={styles.inputLabel}>WHAT IS IT FOR?</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g. Party food"
-                  placeholderTextColor="#9298A6"
-                  value={requestTitle}
-                  onChangeText={setRequestTitle}
-                />
-
-                <Text style={styles.inputLabel}>TARGET AMOUNT ({selectedCurrency})</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="100.00"
-                  placeholderTextColor="#9298A6"
-                  value={targetAmount}
-                  onChangeText={setTargetAmount}
-                  keyboardType="decimal-pad"
-                />
-
-                <Pressable
-                  style={[styles.primaryButton, saving && styles.disabled]}
-                  disabled={saving}
-                  onPress={submitContributionRequest}
-                >
-                  {saving ? (
-                    <ActivityIndicator color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.primaryButtonText}>Create target</Text>
-                  )}
-                </Pressable>
-              </View>
-            )}
-
-            <Text style={styles.sectionHeading}>Contribution targets</Text>
-
-            {visibleRequests.length ? (
-  visibleRequests.map((request) => {
-    const progress =
-      request.targetAmount > 0
-        ? Math.min(
-            Math.max(request.contributedAmount / request.targetAmount, 0),
-            1
-          )
-        : 0;
-
-    const completed = request.remainingAmount <= 0;
-
-    return (
-      <View key={request.id} style={styles.premiumContributionCard}>
-
-        {/* Header */}
-        <View style={styles.contributionHeader}>
-          <View style={styles.contributionIconBox}>
-            <Ionicons
-              name="people-outline"
-              size={23}
-              color="#065F46"
-            />
-          </View>
-
-          <View style={{ flex: 1 }}>
-            <Text style={styles.contributionTitle}>
-              {request.title}
-            </Text>
-
-            <Text style={styles.contributionSubtitle}>
-              Started by {request.createdBy?.name || 'Roommate'}
-            </Text>
-          </View>
-
-          {completed && (
-            <Ionicons
-              name="checkmark-circle"
-              size={24}
-              color="#178B67"
-            />
-          )}
-        </View>
-
-        {/* Amount collected */}
-        <View style={styles.contributionAmountPanel}>
-          <Text style={styles.contributionAmountLabel}>
-            TOTAL COLLECTED
-          </Text>
-
-          <Text style={styles.contributionAmount}>
-            {formatMoney(request.contributedAmount, selectedCurrency)}
-          </Text>
-
-          <Text style={styles.contributionTargetText}>
-            of {formatMoney(request.targetAmount, selectedCurrency)} target
-          </Text>
-
-          <View style={styles.contributionProgressTrack}>
-            <View
-              style={[
-                styles.contributionProgressFill,
-                { width: `${progress * 100}%` },
-              ]}
-            />
-          </View>
-
-          <View style={styles.contributionProgressFooter}>
-            <Text style={styles.contributionProgressPercent}>
-              {Math.round(progress * 100)}% collected
-            </Text>
-
-            <Text style={styles.contributionRemaining}>
-              {completed
-                ? 'Target reached!'
-                : `${formatMoney(request.remainingAmount, selectedCurrency)} left`}
-            </Text>
-          </View>
-        </View>
-
-        {/* Contributions from roommates */}
-        {request.contributions.length > 0 && (
-          <View style={styles.contributionMembersSection}>
-            <Text style={styles.contributionSectionLabel}>
-              CONTRIBUTIONS
-            </Text>
-
-            {request.contributions.map((contribution) => (
-              <View
-                key={contribution.id}
-                style={styles.contributionMemberRow}
-              >
-                <View style={styles.contributionMemberAvatar}>
-                  <Text style={styles.contributionMemberInitial}>
-                    {(contribution.member?.name || 'R')
-                      .charAt(0)
-                      .toUpperCase()}
+                    </View>
+                  );
+                })
+              ) : (
+                <View style={styles.emptyCard}>
+                  <Ionicons
+                    name="people-outline"
+                    size={30}
+                    color="#065F46"
+                  />
+                  <Text style={styles.emptyTitle}>
+                    No contribution targets
+                  </Text>
+                  <Text style={styles.muted}>
+                    Create a shared target for groceries, events, or apartment purchases.
                   </Text>
                 </View>
-
-                <Text style={styles.contributionMemberName}>
-                  {contribution.memberId === memberId
-                    ? 'You'
-                    : contribution.member?.name || 'Roommate'}
-                </Text>
-
-                <Text style={styles.contributionMemberAmount}>
-                  {formatMoney(contribution.amount, selectedCurrency)}
-                </Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Add contribution */}
-        {!completed && (
-          <View style={styles.premiumContributeBox}>
-            <Text style={styles.contributionSectionLabel}>
-              ADD YOUR CONTRIBUTION
-            </Text>
-
-            <View style={styles.contributionInputRow}>
-              <View style={styles.contributionInputWrapper}>
-                <Text style={styles.contributionCurrencySymbol}>
-                  {selectedCurrency === 'EUR' ? '€' : 'Kč'}
-                </Text>
-
-                <TextInput
-                  style={styles.contributionAmountInput}
-                  placeholder="0.00"
-                  placeholderTextColor="#AAA6B8"
-                  value={contributionInputs[request.id] ?? ''}
-                  onChangeText={(value) =>
-                    setContributionInputs((previous) => ({
-                      ...previous,
-                      [request.id]: value,
-                    }))
-                  }
-                  keyboardType="decimal-pad"
-                />
-              </View>
-
-              <Pressable
-                style={[
-                  styles.premiumContributeButton,
-                  saving && styles.disabled,
-                ]}
-                disabled={saving}
-                onPress={() => submitContribution(request.id)}
-              >
-                {saving ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <>
-                    <Ionicons
-                      name="add-circle-outline"
-                      size={19}
-                      color="#FFFFFF"
-                    />
-                    <Text style={styles.premiumContributeButtonText}>
-                      Add
-                    </Text>
-                  </>
-                )}
-              </Pressable>
-            </View>
-          </View>
-        )}
-
-        {completed && (
-          <View style={styles.contributionCompletedRow}>
-            <Ionicons
-              name="checkmark-circle"
-              size={18}
-              color="#178B67"
-            />
-            <Text style={styles.contributionCompletedText}>
-              Contribution target completed
-            </Text>
-          </View>
-        )}
-
-      </View>
-    );
-  })
-) : (
-  <View style={styles.emptyCard}>
-    <Ionicons
-      name="people-outline"
-      size={30}
-      color="#065F46"
-    />
-    <Text style={styles.emptyTitle}>
-      No contribution targets
-    </Text>
-    <Text style={styles.muted}>
-      Create a shared target for groceries, events, or apartment purchases.
-    </Text>
-  </View>
-)}
-          </>
-        )}
+              )}
+            </>
+          )}
 
         </>)}
         <Text style={styles.footer}>Roomie · Shared living, made easier.</Text>
@@ -2236,14 +2298,14 @@ export default function MoneyScreen() {
 
 
 const redesign = StyleSheet.create({
-  topRow:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:22,gap:10},
-  brandRow:{flexDirection:'row',alignItems:'center',gap:10,flex:1},brandIcon:{width:42,height:42,borderRadius:14,backgroundColor:'#065F46',alignItems:'center',justifyContent:'center'},pageTitle:{fontSize:24,fontWeight:'800',color:'#28223D'},pageSubtitle:{fontSize:11,color:'#918AA1',marginTop:2},currencyPill:{backgroundColor:'rgba(255,255,255,0.78)',paddingHorizontal:12,paddingVertical:10,borderRadius:25,flexDirection:'row',alignItems:'center',gap:6},currencyText:{color:'#065F46',fontSize:12,fontWeight:'800'},
-  backButton:{flexDirection:'row',alignItems:'center',gap:8,marginBottom:20},backText:{color:'#065F46',fontWeight:'700',fontSize:14},
-  hero:{backgroundColor:'#065F46',borderRadius:27,padding:22,overflow:'hidden',marginBottom:20,borderWidth:1,borderColor:'#32846A',shadowColor:'#064E3B',shadowOpacity:0.15,shadowRadius:15,elevation:4},heroTop:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},heroEyebrow:{fontSize:10,color:'#D1FAE5',fontWeight:'800',letterSpacing:1.2},heroHeadline:{fontSize:22,fontWeight:'800',color:'#FFFFFF',marginTop:14},heroCaption:{fontSize:13,color:'#D1FAE5',marginTop:7},heroStats:{flexDirection:'row',gap:10,marginTop:20},heroStat:{flex:1,backgroundColor:'rgba(255,255,255,0.14)',borderRadius:15,padding:13,borderWidth:1,borderColor:'rgba(255,255,255,0.20)'},heroStatLabel:{color:'#D1FAE5',fontSize:12},heroStatValue:{color:'#FFFFFF',fontSize:20,fontWeight:'800',marginTop:6},
-  sectionTitle:{fontSize:17,fontWeight:'800',color:'#28223D',marginBottom:13},sectionHeadingRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',marginTop:22},linkText:{color:'#065F46',fontSize:12,fontWeight:'800',marginBottom:13},actionRow:{flexDirection:'row',gap:9,marginBottom:8},actionCard:{flex:1,minWidth:0,backgroundColor:'rgba(255,255,255,0.79)',borderRadius:18,paddingVertical:17,paddingHorizontal:5,alignItems:'center',gap:11,borderWidth:1,borderColor:'rgba(255,255,255,0.96)'},actionIcon:{width:45,height:45,borderRadius:15,alignItems:'center',justifyContent:'center'},actionText:{fontSize:11,fontWeight:'800',color:'#322B46',textAlign:'center'},
-  attentionCard:{backgroundColor:'#FFF3E4',borderRadius:18,padding:14,flexDirection:'row',alignItems:'center',gap:12},attentionIcon:{width:43,height:43,backgroundColor:'#FFE5C4',borderRadius:13,alignItems:'center',justifyContent:'center'},attentionTitle:{fontSize:13,fontWeight:'800',color:'#5E462B'},attentionSubtitle:{fontSize:12,color:'#9B784C',marginTop:4},
-  activityCard:{backgroundColor:'rgba(255,255,255,0.79)',borderRadius:19,paddingHorizontal:15,paddingVertical:4,borderWidth:1,borderColor:'rgba(255,255,255,0.96)',marginBottom:23},activityRow:{flexDirection:'row',alignItems:'center',gap:12,paddingVertical:14},activityDivider:{borderTopWidth:1,borderTopColor:'#F0EDF5'},activityIcon:{width:41,height:41,borderRadius:13,backgroundColor:'#E6F8EF',alignItems:'center',justifyContent:'center'},activityTitle:{fontSize:13,fontWeight:'800',color:'#302A43'},activityMeta:{fontSize:11,color:'#918AA1',marginTop:4},activityAmount:{fontSize:13,fontWeight:'800',color:'#302A43'},emptyText:{fontSize:13,color:'#918AA1',paddingVertical:20,textAlign:'center'},
-  exploreGrid:{flexDirection:'row',flexWrap:'wrap',gap:10,marginBottom:20},exploreCard:{width:'48%',flexGrow:1,backgroundColor:'rgba(225,241,233,0.74)',borderRadius:18,padding:16,gap:7},exploreTitle:{fontSize:14,fontWeight:'800',color:'#322B46',marginTop:3},exploreSub:{fontSize:11,color:'#80788D'},
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22, gap: 10 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }, brandIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: '#065F46', alignItems: 'center', justifyContent: 'center' }, pageTitle: { fontSize: 24, fontWeight: '800', color: '#28223D' }, pageSubtitle: { fontSize: 11, color: '#918AA1', marginTop: 2 }, currencyPill: { backgroundColor: 'rgba(255,255,255,0.78)', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 25, flexDirection: 'row', alignItems: 'center', gap: 6 }, currencyText: { color: '#065F46', fontSize: 12, fontWeight: '800' },
+  backButton: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 20 }, backText: { color: '#065F46', fontWeight: '700', fontSize: 14 },
+  hero: { backgroundColor: '#065F46', borderRadius: 27, padding: 22, overflow: 'hidden', marginBottom: 20, borderWidth: 1, borderColor: '#32846A', shadowColor: '#064E3B', shadowOpacity: 0.15, shadowRadius: 15, elevation: 4 }, heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, heroEyebrow: { fontSize: 10, color: '#D1FAE5', fontWeight: '800', letterSpacing: 1.2 }, heroHeadline: { fontSize: 22, fontWeight: '800', color: '#FFFFFF', marginTop: 14 }, heroCaption: { fontSize: 13, color: '#D1FAE5', marginTop: 7 }, heroStats: { flexDirection: 'row', gap: 10, marginTop: 20 }, heroStat: { flex: 1, backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: 15, padding: 13, borderWidth: 1, borderColor: 'rgba(255,255,255,0.20)' }, heroStatLabel: { color: '#D1FAE5', fontSize: 12 }, heroStatValue: { color: '#FFFFFF', fontSize: 20, fontWeight: '800', marginTop: 6 },
+  sectionTitle: { fontSize: 17, fontWeight: '800', color: '#28223D', marginBottom: 13 }, sectionHeadingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 22 }, linkText: { color: '#065F46', fontSize: 12, fontWeight: '800', marginBottom: 13 }, actionRow: { flexDirection: 'row', gap: 9, marginBottom: 8 }, actionCard: { flex: 1, minWidth: 0, backgroundColor: 'rgba(255,255,255,0.79)', borderRadius: 18, paddingVertical: 17, paddingHorizontal: 5, alignItems: 'center', gap: 11, borderWidth: 1, borderColor: 'rgba(255,255,255,0.96)' }, actionIcon: { width: 45, height: 45, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }, actionText: { fontSize: 11, fontWeight: '800', color: '#322B46', textAlign: 'center' },
+  attentionCard: { backgroundColor: '#FFF3E4', borderRadius: 18, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }, attentionIcon: { width: 43, height: 43, backgroundColor: '#FFE5C4', borderRadius: 13, alignItems: 'center', justifyContent: 'center' }, attentionTitle: { fontSize: 13, fontWeight: '800', color: '#5E462B' }, attentionSubtitle: { fontSize: 12, color: '#9B784C', marginTop: 4 },
+  activityCard: { backgroundColor: 'rgba(255,255,255,0.79)', borderRadius: 19, paddingHorizontal: 15, paddingVertical: 4, borderWidth: 1, borderColor: 'rgba(255,255,255,0.96)', marginBottom: 23 }, activityRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14 }, activityDivider: { borderTopWidth: 1, borderTopColor: '#F0EDF5' }, activityIcon: { width: 41, height: 41, borderRadius: 13, backgroundColor: '#E6F8EF', alignItems: 'center', justifyContent: 'center' }, activityTitle: { fontSize: 13, fontWeight: '800', color: '#302A43' }, activityMeta: { fontSize: 11, color: '#918AA1', marginTop: 4 }, activityAmount: { fontSize: 13, fontWeight: '800', color: '#302A43' }, emptyText: { fontSize: 13, color: '#918AA1', paddingVertical: 20, textAlign: 'center' },
+  exploreGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 }, exploreCard: { width: '48%', flexGrow: 1, backgroundColor: 'rgba(225,241,233,0.74)', borderRadius: 18, padding: 16, gap: 7 }, exploreTitle: { fontSize: 14, fontWeight: '800', color: '#322B46', marginTop: 3 }, exploreSub: { fontSize: 11, color: '#80788D' },
 });
 
 const styles = StyleSheet.create({
@@ -3543,249 +3605,250 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   addContributionCard: {
-  backgroundColor: '#065F46',
-  borderRadius: 20,
-  padding: 18,
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 13,
-  marginTop: 14,
-  marginBottom: 16,
-},
+    backgroundColor: '#065F46',
+    borderRadius: 20,
+    padding: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 13,
+    marginTop: 14,
+    marginBottom: 16,
+  },
 
-addContributionIcon: {
-  width: 46,
-  height: 46,
-  borderRadius: 15,
-  backgroundColor: 'rgba(255,255,255,0.18)',
-  justifyContent: 'center',
-  alignItems: 'center',
-},
+  addContributionIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 
-addContributionTitle: {
-  color: '#FFFFFF',
-  fontSize: 16,
-  fontWeight: '800',
-},
+  addContributionTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
+  },
 
-addContributionSubtitle: {
-  color: '#E7E1FF',
-  fontSize: 12,
-  marginTop: 5,
-},
-premiumContributionCard: {
-  backgroundColor: 'rgba(255,255,255,0.79)',
-  borderRadius: 22,
-  padding: 18,
-  marginTop: 12,
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.92)',
-},
+  addContributionSubtitle: {
+    color: '#E7E1FF',
+    fontSize: 12,
+    marginTop: 5,
+  },
+  premiumContributionCard: {
+    backgroundColor: 'rgba(255,255,255,0.79)',
+    borderRadius: 22,
+    padding: 18,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.92)',
+  },
 
-contributionHeader: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 12,
-},
+  contributionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
 
-contributionIconBox: {
-  width: 48,
-  height: 48,
-  borderRadius: 16,
-  backgroundColor: '#E6F8EF',
-  justifyContent: 'center',
-  alignItems: 'center',
-},
+  contributionIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: '#E6F8EF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 
-contributionTitle: {
-  fontSize: 16,
-  fontWeight: '800',
-  color: '#19182D',
-},
+  contributionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#19182D',
+  },
 
-contributionSubtitle: {
-  fontSize: 12,
-  color: '#85839A',
-  marginTop: 4,
-},
+  contributionSubtitle: {
+    fontSize: 12,
+    color: '#85839A',
+    marginTop: 4,
+  },
 
-contributionAmountPanel: {
-  backgroundColor: '#F5F2FF',
-  borderRadius: 18,
-  padding: 17,
-  marginTop: 17,
-},
+  contributionAmountPanel: {
+    backgroundColor: '#F5F2FF',
+    borderRadius: 18,
+    padding: 17,
+    marginTop: 17,
+  },
 
-contributionAmountLabel: {
-  fontSize: 11,
-  fontWeight: '800',
-  letterSpacing: 0.7,
-  color: '#85839A',
-},
+  contributionAmountLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.7,
+    color: '#85839A',
+  },
 
-contributionAmount: {
-  fontSize: 28,
-  fontWeight: '800',
-  color: '#065F46',
-  marginTop: 7,
-},
+  contributionAmount: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#065F46',
+    marginTop: 7,
+  },
 
-contributionTargetText: {
-  fontSize: 12,
-  color: '#77758C',
-  marginTop: 4,
-},
+  contributionTargetText: {
+    fontSize: 12,
+    color: '#77758C',
+    marginTop: 4,
+  },
 
-contributionProgressTrack: {
-  height: 9,
-  backgroundColor: '#E3DDF4',
-  borderRadius: 10,
-  overflow: 'hidden',
-  marginTop: 16,
-},
+  contributionProgressTrack: {
+    height: 9,
+    backgroundColor: '#E3DDF4',
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginTop: 16,
+  },
 
-contributionProgressFill: {
-  height: '100%',
-  backgroundColor: '#065F46',
-  borderRadius: 10,
-},
+  contributionProgressFill: {
+    height: '100%',
+    backgroundColor: '#065F46',
+    borderRadius: 10,
+  },
 
-contributionProgressFooter: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  marginTop: 10,
-  gap: 8,
-},
+  contributionProgressFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+    gap: 8,
+  },
 
-contributionProgressPercent: {
-  fontSize: 12,
-  fontWeight: '700',
-  color: '#065F46',
-},
+  contributionProgressPercent: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#065F46',
+  },
 
-contributionRemaining: {
-  fontSize: 12,
-  fontWeight: '700',
-  color: '#178B67',
-},
+  contributionRemaining: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#178B67',
+  },
 
-contributionMembersSection: {
-  marginTop: 20,
-},
+  contributionMembersSection: {
+    marginTop: 20,
+  },
 
-contributionSectionLabel: {
-  fontSize: 11,
-  fontWeight: '800',
-  color: '#85839A',
-  letterSpacing: 0.7,
-  marginBottom: 12,
-},
+  contributionSectionLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#85839A',
+    letterSpacing: 0.7,
+    marginBottom: 12,
+  },
 
-contributionMemberRow: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  paddingVertical: 9,
-  gap: 10,
-  borderBottomWidth: 1,
-  borderBottomColor: '#F1EFF6',
-},
+  contributionMemberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 9,
+    gap: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1EFF6',
+  },
 
-contributionMemberAvatar: {
-  width: 35,
-  height: 35,
-  borderRadius: 18,
-  backgroundColor: '#E6F8EF',
-  justifyContent: 'center',
-  alignItems: 'center',
-},
+  contributionMemberAvatar: {
+    width: 35,
+    height: 35,
+    borderRadius: 18,
+    backgroundColor: '#E6F8EF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 
-contributionMemberInitial: {
-  fontSize: 13,
-  fontWeight: '800',
-  color: '#065F46',
-},
+  contributionMemberInitial: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#065F46',
+  },
 
-contributionMemberName: {
-  flex: 1,
-  fontSize: 13,
-  fontWeight: '700',
-  color: '#19182D',
-},
+  contributionMemberName: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#19182D',
+  },
 
-contributionMemberAmount: {
-  fontSize: 13,
-  fontWeight: '800',
-  color: '#065F46',
-},
+  contributionMemberAmount: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#065F46',
+  },
 
-premiumContributeBox: {
-  marginTop: 20,
-  paddingTop: 16,
-  borderTopWidth: 1,
-  borderTopColor: '#EFEDF5',
-},
+  premiumContributeBox: {
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#EFEDF5',
+  },
 
-contributionInputRow: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 10,
-},
+  contributionInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
 
-contributionInputWrapper: {
-  flex: 1,
-  flexDirection: 'row',
-  alignItems: 'center',
-  borderWidth: 1,
-  borderColor: '#E5E1F0',
-  borderRadius: 13,
-  paddingHorizontal: 13,
-  height: 48,
-  gap: 7,
-},
+  contributionInputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E1F0',
+    borderRadius: 13,
+    paddingHorizontal: 13,
+    height: 48,
+    gap: 7,
+  },
 
-contributionCurrencySymbol: {
-  fontSize: 14,
-  fontWeight: '800',
-  color: '#065F46',
-},
+  contributionCurrencySymbol: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#065F46',
+  },
 
-contributionAmountInput: {
-  flex: 1,
-  fontSize: 15,
-  fontWeight: '700',
-  color: '#19182D',
-},
+  contributionAmountInput: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#19182D',
+  },
 
-premiumContributeButton: {
-  backgroundColor: '#065F46',
-  borderRadius: 13,
-  height: 48,
-  paddingHorizontal: 18,
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 7,
-},
+  premiumContributeButton: {
+    backgroundColor: '#065F46',
+    borderRadius: 13,
+    height: 48,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+  },
 
-premiumContributeButtonText: {
-  color: '#FFFFFF',
-  fontSize: 14,
-  fontWeight: '800',
-},
+  premiumContributeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
+  },
 
-contributionCompletedRow: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 8,
-  marginTop: 16,
-},
+  contributionCompletedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 16,
+  },
 
-contributionCompletedText: {
-  color: '#178B67',
-  fontSize: 13,
-  fontWeight: '700',
-},
+
+  contributionCompletedText: {
+    color: '#178B67',
+    fontSize: 13,
+    fontWeight: '700',
+  },
   moneyHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 26 },
   moneyBrandIcon: { width: 39, height: 39, borderRadius: 13, backgroundColor: '#065F46', alignItems: 'center', justifyContent: 'center', marginRight: 10 },
   moneyBrand: { fontSize: 26, fontWeight: '900', color: '#19182D', letterSpacing: -1.4 },
@@ -3809,35 +3872,78 @@ contributionCompletedText: {
 });
 
 const settleDesign = StyleSheet.create({
-  heroCTA:{backgroundColor:'rgba(255,255,255,0.79)',padding:13,borderRadius:13,flexDirection:'row',justifyContent:'space-between',alignItems:'center',marginTop:14},
-  heroCTAText:{color:'#065F46',fontWeight:'700',fontSize:14},
-  spendingCard:{backgroundColor:'rgba(255,255,255,0.91)',padding:17,borderRadius:20,flexDirection:'row',alignItems:'center',gap:14,marginBottom:22,marginTop:12,borderWidth:1,borderColor:'#FFFFFF',shadowColor:'#065F46',shadowOpacity:0.06,shadowRadius:12,elevation:2},
-  spendingIcon:{backgroundColor:'#E6F8EF',borderRadius:13,padding:12},spendingEyebrow:{fontSize:10,color:'#928AA3',fontWeight:'700',letterSpacing:0.7},spendingAmount:{fontSize:23,color:'#2B2540',fontWeight:'800',marginTop:4},spendingMeta:{fontSize:12,color:'#8D849C',marginTop:3},
-  heading:{fontSize:23,fontWeight:'800',color:'#2E2542',marginTop:12},description:{color:'#8B839B',fontSize:13,marginTop:5,marginBottom:15,lineHeight:19},groupHeading:{fontSize:18,fontWeight:'800',color:'#302744',marginTop:20,marginBottom:11},
-  personCard:{backgroundColor:'rgba(255,255,255,0.79)',borderRadius:20,marginBottom:12,overflow:'hidden'},personRow:{flexDirection:'row',alignItems:'center',padding:15,gap:12},personRowCard:{backgroundColor:'rgba(255,255,255,0.79)',borderRadius:18,flexDirection:'row',alignItems:'center',padding:15,gap:12,marginBottom:10},avatar:{width:46,height:46,borderRadius:23,backgroundColor:'#F7DFD8',alignItems:'center',justifyContent:'center'},avatarText:{fontWeight:'800',fontSize:19,color:'#A05A49'},personTitle:{fontSize:15,fontWeight:'700',color:'#302744'},personAmount:{fontSize:19,fontWeight:'800',color:'#302744',marginTop:3},owedAmount:{fontSize:16,fontWeight:'800',color:'#32835D'},detailMuted:{fontSize:12,color:'#8B839B',lineHeight:18,marginTop:3},settlePill:{backgroundColor:'#065F46',borderRadius:12,paddingHorizontal:15,paddingVertical:11},settlePillText:{color:'#FFFFFF',fontWeight:'700',fontSize:13},
-  detailArea:{padding:15,borderTopWidth:1,borderTopColor:'#F0EDF6',backgroundColor:'#FDFBFF'},detailHeading:{fontSize:16,fontWeight:'800',color:'#302744'},expenseItem:{backgroundColor:'rgba(255,255,255,0.79)',borderRadius:14,padding:13,marginTop:12,borderWidth:1,borderColor:'#F0EDF6'},expenseTop:{flexDirection:'row',justifyContent:'space-between',gap:10},expenseTitle:{fontSize:14,fontWeight:'700',color:'#302744',flex:1},expenseAmount:{fontSize:14,fontWeight:'800',color:'#302744'},pendingText:{fontSize:12,color:'#A77B38',marginTop:8},fieldLabel:{fontSize:12,color:'#797188',marginTop:13,marginBottom:7},payRow:{flexDirection:'row',gap:8,alignItems:'center'},amountInput:{flex:1,borderWidth:1,borderColor:'#E7E1F1',borderRadius:11,padding:11,fontSize:17,color:'#302744'},fullPill:{backgroundColor:'#EEE9FC',borderRadius:10,paddingVertical:13,paddingHorizontal:16},fullPillText:{fontWeight:'700',color:'#065F46'},confirmButton:{backgroundColor:'#065F46',borderRadius:12,padding:13,marginTop:10,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:10},confirmText:{color:'#FFFFFF',fontWeight:'700'},disclaimer:{fontSize:11,color:'#8B839B',lineHeight:17,marginTop:12},empty:{fontSize:13,color:'#91899F',padding:14,backgroundColor:'rgba(255,255,255,0.79)',borderRadius:14},attentionBox:{backgroundColor:'#FFF3E5',padding:14,borderRadius:18,marginBottom:8},attentionHeading:{fontSize:15,fontWeight:'800',color:'#805A2B',marginBottom:10},approvalCard:{backgroundColor:'rgba(255,255,255,0.79)',borderRadius:13,padding:12,marginTop:8},actionButtons:{flexDirection:'row',gap:9,marginTop:12},primarySmall:{backgroundColor:'#065F46',padding:11,borderRadius:10,flex:1,alignItems:'center'},primarySmallText:{color:'#FFFFFF',fontWeight:'700',fontSize:12},secondarySmall:{backgroundColor:'#F4F0FB',padding:11,borderRadius:10,flex:1,alignItems:'center'},secondarySmallText:{color:'#065F46',fontWeight:'700',fontSize:12},historyRow:{backgroundColor:'rgba(255,255,255,0.79)',borderRadius:13,padding:13,flexDirection:'row',alignItems:'center',marginBottom:8,gap:12},
+  heroCTA: { backgroundColor: 'rgba(255,255,255,0.79)', padding: 13, borderRadius: 13, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 },
+  heroCTAText: { color: '#065F46', fontWeight: '700', fontSize: 14 },
+  spendingCard: { backgroundColor: 'rgba(255,255,255,0.91)', padding: 17, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 22, marginTop: 12, borderWidth: 1, borderColor: '#FFFFFF', shadowColor: '#065F46', shadowOpacity: 0.06, shadowRadius: 12, elevation: 2 },
+  spendingIcon: { backgroundColor: '#E6F8EF', borderRadius: 13, padding: 12 }, spendingEyebrow: { fontSize: 10, color: '#928AA3', fontWeight: '700', letterSpacing: 0.7 }, spendingAmount: { fontSize: 23, color: '#2B2540', fontWeight: '800', marginTop: 4 }, spendingMeta: { fontSize: 12, color: '#8D849C', marginTop: 3 },
+  heading: { fontSize: 23, fontWeight: '800', color: '#2E2542', marginTop: 12 }, description: { color: '#8B839B', fontSize: 13, marginTop: 5, marginBottom: 15, lineHeight: 19 }, groupHeading: { fontSize: 18, fontWeight: '800', color: '#302744', marginTop: 20, marginBottom: 11 },
+  personCard: { backgroundColor: 'rgba(255,255,255,0.79)', borderRadius: 20, marginBottom: 12, overflow: 'hidden' }, personRow: { flexDirection: 'row', alignItems: 'center', padding: 15, gap: 12 }, personRowCard: { backgroundColor: 'rgba(255,255,255,0.79)', borderRadius: 18, flexDirection: 'row', alignItems: 'center', padding: 15, gap: 12, marginBottom: 10 }, avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#F7DFD8', alignItems: 'center', justifyContent: 'center' }, avatarText: { fontWeight: '800', fontSize: 19, color: '#A05A49' }, personTitle: { fontSize: 15, fontWeight: '700', color: '#302744' }, personAmount: { fontSize: 19, fontWeight: '800', color: '#302744', marginTop: 3 }, owedAmount: { fontSize: 16, fontWeight: '800', color: '#32835D' }, detailMuted: { fontSize: 12, color: '#8B839B', lineHeight: 18, marginTop: 3 }, settlePill: { backgroundColor: '#065F46', borderRadius: 12, paddingHorizontal: 15, paddingVertical: 11 }, settlePillText: { color: '#FFFFFF', fontWeight: '700', fontSize: 13 },
+  detailArea: { padding: 15, borderTopWidth: 1, borderTopColor: '#F0EDF6', backgroundColor: '#FDFBFF' }, detailHeading: { fontSize: 16, fontWeight: '800', color: '#302744' }, expenseItem: { backgroundColor: 'rgba(255,255,255,0.79)', borderRadius: 14, padding: 13, marginTop: 12, borderWidth: 1, borderColor: '#F0EDF6' }, expenseTop: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 }, expenseTitle: { fontSize: 14, fontWeight: '700', color: '#302744', flex: 1 }, expenseAmount: { fontSize: 14, fontWeight: '800', color: '#302744' }, pendingText: { fontSize: 12, color: '#A77B38', marginTop: 8 }, fieldLabel: { fontSize: 12, color: '#797188', marginTop: 13, marginBottom: 7 }, payRow: { flexDirection: 'row', gap: 8, alignItems: 'center' }, amountInput: { flex: 1, borderWidth: 1, borderColor: '#E7E1F1', borderRadius: 11, padding: 11, fontSize: 17, color: '#302744' }, fullPill: { backgroundColor: '#EEE9FC', borderRadius: 10, paddingVertical: 13, paddingHorizontal: 16 }, fullPillText: { fontWeight: '700', color: '#065F46' }, confirmButton: { backgroundColor: '#065F46', borderRadius: 12, padding: 13, marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 }, confirmText: { color: '#FFFFFF', fontWeight: '700' }, disclaimer: { fontSize: 11, color: '#8B839B', lineHeight: 17, marginTop: 12 }, empty: { fontSize: 13, color: '#91899F', padding: 14, backgroundColor: 'rgba(255,255,255,0.79)', borderRadius: 14 }, attentionBox: { backgroundColor: '#FFF3E5', padding: 14, borderRadius: 18, marginBottom: 8 }, attentionHeading: { fontSize: 15, fontWeight: '800', color: '#805A2B', marginBottom: 10 }, approvalCard: { backgroundColor: 'rgba(255,255,255,0.79)', borderRadius: 13, padding: 12, marginTop: 8 }, actionButtons: { flexDirection: 'row', gap: 9, marginTop: 12 }, primarySmall: { backgroundColor: '#065F46', padding: 11, borderRadius: 10, flex: 1, alignItems: 'center' }, primarySmallText: { color: '#FFFFFF', fontWeight: '700', fontSize: 12 }, secondarySmall: { backgroundColor: '#F4F0FB', padding: 11, borderRadius: 10, flex: 1, alignItems: 'center' }, secondarySmallText: { color: '#065F46', fontWeight: '700', fontSize: 12 }, historyRow: { backgroundColor: 'rgba(255,255,255,0.79)', borderRadius: 13, padding: 13, flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 12 },
 });
 
+
 const moneyTheme = StyleSheet.create({
-  workspaceRow: { flexDirection: 'row', gap: 8, marginBottom: 24 },
-  workspaceButton: { flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 15, paddingHorizontal: 5, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.90)', borderWidth: 1, borderColor: '#D9EAE2', shadowColor: '#065F46', shadowOpacity: 0.04, shadowRadius: 8, elevation: 1 },
-  workspaceText: { fontSize: 11, fontWeight: '700', color: '#065F46' },
+  workspaceRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 28,
+  },
+
+  workspaceButton: {
+    flex: 1,
+    minWidth: 0,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    paddingVertical: 19,
+    paddingHorizontal: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 11,
+
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    elevation: 3,
+  },
+
+  workspacePressed: {
+    backgroundColor: '#F1F8F4',
+    transform: [{ scale: 0.97 }],
+  },
+
+  workspaceIcon: {
+    width: 49,
+    height: 49,
+    borderRadius: 17,
+    backgroundColor: '#EAF7EF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  workspaceText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#1E293B',
+    textAlign: 'center',
+  },
 });
+
 
 // Matches the Shopping tab's roomie brand, spacious title, frosted surfaces and soft ambient glow.
 const moneyGlass = StyleSheet.create({
-  ambientOrbTop: { position:'absolute', top:115, right:-90, width:290, height:290, borderRadius:145, backgroundColor:'rgba(88,175,137,0.12)' },
-  ambientOrbBottom: { position:'absolute', top:510, left:-120, width:310, height:310, borderRadius:155, backgroundColor:'rgba(94,196,151,0.10)' },
-  brandRow: { flexDirection:'row', alignItems:'center', marginBottom:26 },
-  brandIcon: { width:39, height:39, borderRadius:13, backgroundColor:'#065F46', alignItems:'center', justifyContent:'center', marginRight:10 },
-  brand: { fontSize:26, fontWeight:'900', color:'#1E293B', letterSpacing:-1.4 },
-  apartmentPill: { maxWidth:'45%', flexDirection:'row', gap:5, alignItems:'center', backgroundColor:'rgba(255,255,255,0.77)', borderWidth:1, borderColor:'rgba(255,255,255,0.96)', borderRadius:20, paddingHorizontal:11, paddingVertical:8 },
-  apartmentText: { color:'#065F46', fontSize:11, fontWeight:'700', flexShrink:1 },
-  titleRow: { flexDirection:'row', alignItems:'flex-start', gap:9, marginBottom:20 },
-  heading: { fontSize:31, fontWeight:'900', letterSpacing:-1.2, color:'#1E293B' },
-  subtitle: { color:'#64748B', fontSize:13, marginTop:6, lineHeight:19 },
-  currencyPill: { marginTop:5, backgroundColor:'rgba(255,255,255,0.84)', borderWidth:1, borderColor:'#FFFFFF', paddingHorizontal:10, paddingVertical:10, borderRadius:20, flexDirection:'row', alignItems:'center', gap:5 },
-  currencyText: { color:'#065F46', fontSize:11, fontWeight:'800' },
-  heroOrb: { position:'absolute', right:-65, top:-100, width:215, height:215, borderRadius:110, backgroundColor:'rgba(255,255,255,0.13)' },
-  heroSheen: { position:'absolute', left:-65, top:-125, width:220, height:220, borderRadius:110, backgroundColor:'rgba(255,255,255,0.09)' },
+  ambientOrbTop: { position: 'absolute', top: 115, right: -90, width: 290, height: 290, borderRadius: 145, backgroundColor: 'rgba(88,175,137,0.12)' },
+  ambientOrbBottom: { position: 'absolute', top: 510, left: -120, width: 310, height: 310, borderRadius: 155, backgroundColor: 'rgba(94,196,151,0.10)' },
+  brandRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 26 },
+  brandIcon: { width: 39, height: 39, borderRadius: 13, backgroundColor: '#065F46', alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  brand: { fontSize: 26, fontWeight: '900', color: '#1E293B', letterSpacing: -1.4 },
+  apartmentPill: { maxWidth: '45%', flexDirection: 'row', gap: 5, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.77)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.96)', borderRadius: 20, paddingHorizontal: 11, paddingVertical: 8 },
+  apartmentText: { color: '#065F46', fontSize: 11, fontWeight: '700', flexShrink: 1 },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, marginBottom: 20 },
+  heading: { fontSize: 31, fontWeight: '900', letterSpacing: -1.2, color: '#1E293B' },
+  subtitle: { color: '#64748B', fontSize: 13, marginTop: 6, lineHeight: 19 },
+  currencyPill: { marginTop: 5, backgroundColor: 'rgba(255,255,255,0.84)', borderWidth: 1, borderColor: '#FFFFFF', paddingHorizontal: 10, paddingVertical: 10, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  currencyText: { color: '#065F46', fontSize: 11, fontWeight: '800' },
+  heroOrb: { position: 'absolute', right: -65, top: -100, width: 215, height: 215, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.13)' },
+  heroSheen: { position: 'absolute', left: -65, top: -125, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.09)' },
 });

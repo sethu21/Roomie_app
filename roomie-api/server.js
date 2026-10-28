@@ -3076,7 +3076,11 @@ IMPORTANT RULES:
     }
   }
 );
+------------------------------------
+const profilePhotoRoutes = require('./roomie_profile_photo_routes');
+app.use('/uploads', express.static('uploads'));
 
+app.use('/api/apartments', profilePhotoRoutes);
 
 /* =========================================================
    ROOMIE - APARTMENT ACTIVITY FEED

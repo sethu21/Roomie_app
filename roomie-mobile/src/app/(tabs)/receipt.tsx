@@ -20,7 +20,7 @@ import { fetch } from 'expo/fetch';
 import { File } from 'expo-file-system';
 import { useApartment } from '../../context/ApartmentContext';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.106.217.165:3000';
+const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
 async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 60000) {
   const controller = new AbortController();

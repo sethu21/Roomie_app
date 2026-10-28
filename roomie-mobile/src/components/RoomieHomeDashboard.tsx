@@ -15,13 +15,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApartment } from '../context/ApartmentContext';
 
 const API_URL =
-  process.env.EXPO_PUBLIC_API_URL ||
-  'http://10.106.217.165:3000';
+  process.env.EXPO_PUBLIC_API_URL;
 
 const C = {
   navy: '#1E293B',
   navySoft: '#334155',
-  bg: '#EDF2F8',
+  bg: '#F3F7FC',
   white: '#FFFFFF',
   muted: '#64748B',
   line: '#E2E8F0',
@@ -430,13 +429,14 @@ export default function RoomieHomeDashboard() {
             accessibilityLabel="Open shopping list"
             style={({ pressed }) => [
               styles.summary,
+              { backgroundColor: '#EAE2F7' },
               pressed && styles.pressed,
             ]}
           >
             <View
               style={[
                 styles.summaryIcon,
-                { backgroundColor: '#F3E8FF' },
+                { backgroundColor: '#D8C6F0' },
               ]}
             >
               <Ionicons
@@ -474,13 +474,14 @@ export default function RoomieHomeDashboard() {
             accessibilityLabel="Open debts"
             style={({ pressed }) => [
               styles.summary,
+              { backgroundColor: '#DDF0E7' },
               pressed && styles.pressed,
             ]}
           >
             <View
               style={[
                 styles.summaryIcon,
-                { backgroundColor: '#DDF3E9' },
+                { backgroundColor: '#C8E6D6' },
               ]}
             >
               <Ionicons
@@ -573,7 +574,7 @@ export default function RoomieHomeDashboard() {
                     styles.note,
                     {
                       backgroundColor: theme.background,
-                      borderColor: theme.border,
+                      borderColor: 'transparent',
                     },
                   ]}
                 >
@@ -728,9 +729,9 @@ export default function RoomieHomeDashboard() {
 }
 
 const styles = StyleSheet.create({
-  ambientOrbTop: { position: 'absolute', width: 310, height: 310, borderRadius: 155, backgroundColor: 'rgba(103,144,209,0.13)', top: 100, right: -135 },
-  ambientOrbBottom: { position: 'absolute', width: 300, height: 300, borderRadius: 150, backgroundColor: 'rgba(122,169,215,0.10)', top: 610, left: -150 },
-  heroSheen: { position: 'absolute', width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(255,255,255,0.055)', left: -100, top: -115 },
+  ambientOrbTop: { position: 'absolute', width: 310, height: 310, borderRadius: 155, backgroundColor: 'transparent', top: 100, right: -135 },
+  ambientOrbBottom: { position: 'absolute', width: 300, height: 300, borderRadius: 150, backgroundColor: 'transparent', top: 610, left: -150 },
+  heroSheen: { position: 'absolute', width: 200, height: 200, borderRadius: 100, backgroundColor: 'rgba(255,255,255,0.025)', left: -100, top: -115 },
   screen: {
     flex: 1,
     backgroundColor: C.bg,
@@ -763,32 +764,9 @@ const styles = StyleSheet.create({
     letterSpacing: -1.3,
   },
 
-  headerButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 15,
-    backgroundColor: 'rgba(255,255,255,0.78)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.95)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-    shadowColor: C.navy,
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 2,
-  },
+  headerButton: { width: 44, height: 44, borderRadius: 15, backgroundColor: '#E5F0F9', alignItems: 'center', justifyContent: 'center', marginRight: 10 },
 
-  profileAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 15,
-    backgroundColor: '#E2E8F0',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.98)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  profileAvatar: { width: 44, height: 44, borderRadius: 15, backgroundColor: '#DCE9F5', alignItems: 'center', justifyContent: 'center' },
 
   profileInitial: {
     fontSize: 18,
@@ -831,41 +809,11 @@ const styles = StyleSheet.create({
     marginBottom: 23,
   },
 
-  hero: {
-    backgroundColor: C.navy,
-    borderRadius: 29,
-    padding: 22,
-    minHeight: 195,
-    marginBottom: 30,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.19)',
-    shadowColor: C.navy,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.13,
-    shadowRadius: 20,
-    elevation: 5,
-  },
+  hero: { backgroundColor: '#203C58', borderRadius: 26, padding: 22, minHeight: 195, marginBottom: 28, overflow: 'hidden' },
 
-  heroGlow: {
-    position: 'absolute',
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: 'rgba(177,205,255,0.18)',
-    right: -75,
-    top: -95,
-  },
+  heroGlow: { position: 'absolute', width: 220, height: 220, borderRadius: 110, backgroundColor: '#294E70', right: -90, top: -110 },
 
-  heroGlowSmall: {
-    position: 'absolute',
-    width: 130,
-    height: 130,
-    borderRadius: 65,
-    backgroundColor: 'rgba(255,255,255,0.11)',
-    right: 50,
-    bottom: -85,
-  },
+  heroGlowSmall: { position: 'absolute', width: 130, height: 130, borderRadius: 65, backgroundColor: '#315575', right: 50, bottom: -95 },
 
   heroTop: {
     flexDirection: 'row',
@@ -874,28 +822,9 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
 
-  heroIcon: {
-    width: 43,
-    height: 43,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  heroIcon: { width: 43, height: 43, borderRadius: 14, backgroundColor: '#355773', alignItems: 'center', justifyContent: 'center' },
 
-  heroTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-    borderRadius: 30,
-  },
+  heroTag: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#355773', paddingHorizontal: 11, paddingVertical: 8, borderRadius: 30 },
 
   onlineDot: {
     width: 6,
@@ -996,21 +925,7 @@ const styles = StyleSheet.create({
     marginBottom: 31,
   },
 
-  summary: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 184,
-    borderRadius: 25,
-    padding: 18,
-    backgroundColor: 'rgba(255,255,255,0.76)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.95)',
-    shadowColor: C.navy,
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 2,
-  },
+  summary: { flex: 1, minWidth: 0, minHeight: 184, borderRadius: 23, padding: 18, backgroundColor: '#EAE2F7' },
 
   pressed: {
     opacity: 0.78,
@@ -1038,15 +953,7 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
 
-  summaryFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 17,
-    borderTopWidth: 1,
-    borderTopColor: C.line,
-    paddingTop: 12,
-  },
+  summaryFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 17, borderTopWidth: 1, borderTopColor: 'rgba(30,41,59,0.10)', paddingTop: 12 },
 
   summaryFooterText: {
     fontSize: 10,
@@ -1067,18 +974,7 @@ const styles = StyleSheet.create({
     rowGap: 12,
   },
 
-  note: {
-    width: '48.3%',
-    minHeight: 174,
-    borderRadius: 18,
-    padding: 15,
-    borderWidth: 1,
-    shadowColor: C.navy,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
-  },
+  note: { width: '48.3%', minHeight: 174, borderRadius: 19, padding: 15, borderWidth: 0 },
 
   noteTop: {
     flexDirection: 'row',
@@ -1120,15 +1016,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 
-  emptyPanel: {
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.78)',
-    padding: 26,
-    alignItems: 'center',
-    gap: 9,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.98)',
-  },
+  emptyPanel: { borderRadius: 22, backgroundColor: '#E5F0F9', padding: 26, alignItems: 'center', gap: 9 },
 
   emptyIcon: {
     width: 48,
@@ -1157,19 +1045,7 @@ const styles = StyleSheet.create({
     marginTop: 30,
   },
 
-  activityPanel: {
-    backgroundColor: 'rgba(255,255,255,0.76)',
-    borderRadius: 25,
-    paddingHorizontal: 17,
-    paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.98)',
-    shadowColor: C.navy,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 2,
-  },
+  activityPanel: { backgroundColor: '#E6F0F9', borderRadius: 23, paddingHorizontal: 17, paddingVertical: 5 },
 
   activityItem: {
     flexDirection: 'row',
@@ -1183,13 +1059,7 @@ const styles = StyleSheet.create({
     borderTopColor: C.line,
   },
 
-  activityIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  activityIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
 
   activityTitle: {
     fontSize: 13,

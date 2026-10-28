@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -31,6 +31,9 @@ type ApartmentResult = {
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { scannedCode } = useLocalSearchParams<{
+    scannedCode?: string;
+  }>();
   const {
     session: currentSession,
     loading: sessionLoading,
@@ -43,6 +46,13 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(false);
   const [connectionSlow, setConnectionSlow] = useState(false);
   const [result, setResult] = useState<ApartmentResult | null>(null);
+
+  useEffect(() => {
+    if (typeof scannedCode === 'string' && scannedCode) {
+      setCode(scannedCode);
+      setMode('join');
+    }
+  }, [scannedCode]);
 
 
   useEffect(() => {
@@ -251,8 +261,8 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-        <View pointerEvents="none" style={styles.orbTop} />
-        <View pointerEvents="none" style={styles.orbBottom} />
+      <View pointerEvents="none" style={styles.orbTop} />
+      <View pointerEvents="none" style={styles.orbBottom} />
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -369,6 +379,22 @@ export default function HomeScreen() {
                   autoCorrect={false}
                   editable={!loading}
                 />
+                {mode === 'join' && (
+                  <Pressable
+                    style={styles.scanButton}
+                    onPress={() => router.push('./scan-qr')}
+                    disabled={loading}
+                  >
+                    <Ionicons
+                      name="qr-code-outline"
+                      size={22}
+                      color="#6B21A8"
+                    />
+                    <Text style={styles.scanButtonText}>
+                      Scan Apartment QR Code
+                    </Text>
+                  </Pressable>
+                )}
               </>
             )}
 
@@ -387,8 +413,8 @@ export default function HomeScreen() {
                   {mode === 'create'
                     ? 'Create apartment'
                     : mode === 'login'
-                    ? 'Log in to apartment'
-                    : 'Join apartment'}
+                      ? 'Log in to apartment'
+                      : 'Join apartment'}
                 </Text>
               )}
             </Pressable>
@@ -455,4 +481,23 @@ const styles = StyleSheet.create({
   codeBox: { backgroundColor: '#F3E8FF', borderWidth: 1, borderColor: '#E9D5FF', borderRadius: 17, padding: 18, alignItems: 'center' },
   codeText: { fontSize: 27, fontWeight: '900', letterSpacing: 3, color: P.purple },
   helperText: { color: P.muted, fontSize: 12, lineHeight: 19, marginTop: 13, marginBottom: 21 },
+  scanButton: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 10,
+  backgroundColor: '#F3E8FF',
+  borderWidth: 1,
+  borderColor: '#E9D5FF',
+  borderRadius: 15,
+  paddingVertical: 16,
+  marginBottom: 20,
+},
+
+scanButtonText: {
+  color: '#6B21A8',
+  fontSize: 14,
+  fontWeight: '800',
+},
+
 });

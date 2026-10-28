@@ -8,9 +8,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApartment } from '../../context/ApartmentContext';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.106.217.165:3000';
+const API_URL = process.env.EXPO_PUBLIC_API_URL;
 const C = {
-  bg: '#F5F3F9', ink: '#1E293B', muted: '#64748B', purple: '#6B21A8',
+  bg: '#F7F4FC', ink: '#1E293B', muted: '#64748B', purple: '#7138A8',
   purpleSoft: '#F3E8FF', line: '#E9DFF1', mint: '#E6F8EF', green: '#065F46',
   amber: '#C67A2A', amberSoft: '#FFF1DF', white: '#FFFFFF', red: '#D96573',
 };
@@ -164,7 +164,7 @@ export default function ShoppingScreen() {
         <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: done, disabled: busyId !== null }}
           onPress={() => void togglePurchased(item)} disabled={busyId !== null} style={styles.checkWrap}>
           {busyId === item.id ? <ActivityIndicator size="small" color={C.purple} /> :
-            <Ionicons name={done ? 'checkmark-circle' : 'ellipse-outline'} size={29} color={done ? C.green : '#C7C2DD'} />}
+            <Ionicons name={done ? 'checkmark-circle' : 'ellipse-outline'} size={29} color={done ? C.green : '#B7A4CF'} />}
         </Pressable>
         <View style={styles.itemBody}>
           <Text style={[styles.itemName, done && styles.strike]}>{item.name}</Text>
@@ -183,7 +183,7 @@ export default function ShoppingScreen() {
         </View>
         <Pressable accessibilityRole="button" accessibilityLabel={`Delete ${item.name}`} onPress={() => confirmDelete(item)}
           style={styles.trash} disabled={busyId !== null}>
-          <Ionicons name="trash-outline" size={18} color="#B5AFC4" />
+          <Ionicons name="trash-outline" size={18} color="#A98EBB" />
         </Pressable>
       </View>
     );
@@ -209,14 +209,13 @@ export default function ShoppingScreen() {
             <Text style={styles.heading}>Shopping list <Text style={{ color: C.purple }}>✦</Text></Text>
             <Text style={styles.subtitle}>Everything your home needs, all in one place.</Text>
             <View style={styles.hero}>
-              <View style={styles.heroOrb} />
-              <View style={styles.heroSheen} />
+              
+              
               <View style={styles.heroTop}><Ionicons name="bag-handle-outline" size={20} color="#E9E4FF" /><Text style={styles.heroEyebrow}>YOUR SHARED SHOPPING</Text></View>
               <View style={styles.heroStats}>
-                <View><Text style={styles.heroNumber}>{pending.length}</Text><Text style={styles.heroLabel}>Still to buy</Text></View>
-                <View style={styles.heroDivider} />
-                <View><Text style={styles.heroNumber}>{purchased.length}</Text><Text style={styles.heroLabel}>Purchased</Text></View>
-                <View style={{ flex: 1 }} />
+                <View style={styles.heroStatBlock}><Text style={styles.heroNumber}>{pending.length}</Text><Text style={styles.heroLabel}>Still to buy</Text></View>
+                
+                <View style={styles.heroStatBlock}><Text style={styles.heroNumber}>{purchased.length}</Text><Text style={styles.heroLabel}>Purchased</Text></View>
                 <View style={styles.heroPercent}><Text style={styles.heroPercentText}>{completion}%</Text></View>
               </View>
               <View style={styles.heroTrack}><View style={[styles.heroFill, { width: `${completion}%` }]} /></View>
@@ -230,7 +229,7 @@ export default function ShoppingScreen() {
             </Pressable>
 
             {showForm && <View style={styles.formCard}>
-              <Text style={styles.formTitle}>What do we need?</Text>
+              <View style={styles.formHeading}><View style={styles.formIcon}><Ionicons name="bag-add-outline" size={22} color={C.purple} /></View><View style={{flex:1}}><Text style={styles.formTitle}>What do we need?</Text><Text style={styles.formSubtitle}>Add something for your roommates</Text></View></View>
               <Text style={styles.fieldLabel}>PRODUCT NAME</Text>
               <TextInput style={styles.input} placeholder="e.g. Milk, bread, rice..." placeholderTextColor="#A39DB6" value={name} onChangeText={setName} maxLength={100} />
               <Text style={styles.fieldLabel}>QUANTITY</Text>
@@ -262,50 +261,54 @@ export default function ShoppingScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F2EDF8' },
-  ambientOrbTop: { position: 'absolute', top: 120, right: -90, width: 290, height: 290, borderRadius: 145, backgroundColor: 'rgba(191,145,231,0.19)' },
-  ambientOrbBottom: { position: 'absolute', top: 520, left: -120, width: 310, height: 310, borderRadius: 155, backgroundColor: 'rgba(167,139,250,0.13)' },
+  screen: { flex: 1, backgroundColor: C.bg },
+  ambientOrbTop: { position: 'absolute', top: 120, right: -90, width: 290, height: 290, borderRadius: 145, backgroundColor: 'transparent' },
+  ambientOrbBottom: { position: 'absolute', top: 520, left: -120, width: 310, height: 310, borderRadius: 155, backgroundColor: 'transparent' },
   content: { paddingHorizontal: 22, paddingTop: 16, paddingBottom: 110 },
   brandRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 28 },
   brandIcon: { width: 39, height: 39, borderRadius: 13, backgroundColor: C.purple, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
   brand: { fontSize: 26, fontWeight: '900', color: C.ink, letterSpacing: -1.4 },
-  apartmentPill: { maxWidth: '45%', flexDirection: 'row', gap: 5, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.72)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', borderRadius: 20, paddingHorizontal: 11, paddingVertical: 8 },
+  apartmentPill: { maxWidth: '45%', flexDirection: 'row', gap: 5, alignItems: 'center', backgroundColor: '#EEE4F8', borderRadius: 20, paddingHorizontal: 11, paddingVertical: 8 },
   apartmentText: { color: C.purple, fontSize: 11, fontWeight: '700', flexShrink: 1 },
   heading: { fontSize: 31, fontWeight: '900', letterSpacing: -1.2, color: C.ink },
   subtitle: { color: C.muted, fontSize: 14, marginTop: 6, marginBottom: 22 },
-  hero: { backgroundColor: C.purple, borderRadius: 27, padding: 22, overflow: 'hidden', marginBottom: 18, borderWidth: 1, borderColor: '#8B40B9', shadowColor: C.purple, shadowOffset: { width: 0, height: 9 }, shadowOpacity: 0.14, shadowRadius: 18, elevation: 4 },
+  hero: { backgroundColor: C.purple, borderRadius: 26, padding: 22, marginBottom: 18, overflow: 'hidden' },
   heroOrb: { position: 'absolute', right: -65, top: -100, width: 215, height: 215, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.13)' },
   heroSheen: { position: 'absolute', left: -65, top: -125, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.10)' },
+  heroStatBlock: { flex: 1, backgroundColor: '#8C5ABB', borderRadius: 17, padding: 14 },
+  formHeading: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 18 },
+  formIcon: { width: 43, height: 43, borderRadius: 14, backgroundColor: '#DDC9F1', alignItems: 'center', justifyContent: 'center' },
+  formSubtitle: { color: C.muted, fontSize: 11, marginTop: 4 },
   heroTop: { flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 22 },
   heroEyebrow: { color: '#F3E8FF', fontSize: 10, fontWeight: '800', letterSpacing: 1.5 },
-  heroStats: { flexDirection: 'row', alignItems: 'center', gap: 20 },
-  heroNumber: { fontSize: 35, fontWeight: '900', color: C.white },
-  heroLabel: { color: '#F3E8FF', fontSize: 12, fontWeight: '600', marginTop: 1 },
+  heroStats: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 2 },
+  heroNumber: { fontSize: 30, fontWeight: '900', color: C.white },
+  heroLabel: { color: '#F0E6FA', fontSize: 11, fontWeight: '600', marginTop: 3 },
   heroDivider: { height: 37, width: 1, backgroundColor: 'rgba(255,255,255,0.36)' },
-  heroPercent: { width: 62, height: 62, borderRadius: 31, backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 2, borderColor: 'rgba(255,255,255,0.5)', alignItems: 'center', justifyContent: 'center' },
+  heroPercent: { width: 58, height: 58, borderRadius: 18, backgroundColor: '#8C5ABB', alignItems: 'center', justifyContent: 'center' },
   heroPercentText: { color: C.white, fontWeight: '900', fontSize: 17 },
-  heroTrack: { marginTop: 22, height: 7, backgroundColor: 'rgba(255,255,255,0.27)', borderRadius: 9, overflow: 'hidden' },
+  heroTrack: { marginTop: 20, height: 7, backgroundColor: '#9768C1', borderRadius: 9, overflow: 'hidden' },
   heroFill: { height: '100%', backgroundColor: C.white, borderRadius: 9 },
   heroFoot: { marginTop: 9, color: '#F3E8FF', fontSize: 11 },
-  addToggle: { backgroundColor: C.purple, borderRadius: 18, paddingHorizontal: 17, paddingVertical: 17, flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 18 },
+  addToggle: { backgroundColor: C.purple, borderRadius: 16, paddingHorizontal: 17, paddingVertical: 17, flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 18 },
   addToggleText: { color: C.white, fontSize: 15, fontWeight: '800' },
-  formCard: { backgroundColor: 'rgba(255,255,255,0.77)', borderRadius: 21, padding: 18, marginBottom: 22, borderWidth: 1, borderColor: '#FFFFFF', shadowColor: C.purple, shadowOpacity: 0.075, shadowRadius: 15, elevation: 3 },
-  formTitle: { fontSize: 18, fontWeight: '800', color: C.ink, marginBottom: 16 },
+  formCard: { backgroundColor: '#EEE6F8', borderRadius: 22, padding: 19, marginBottom: 22 },
+  formTitle: { fontSize: 17, fontWeight: '900', color: C.ink },
   fieldLabel: { fontSize: 10, fontWeight: '800', color: C.muted, letterSpacing: 1.1, marginBottom: 8 },
-  input: { borderRadius: 13, borderWidth: 1, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.75)', paddingHorizontal: 14, paddingVertical: 13, fontSize: 14, color: C.ink, marginBottom: 16 },
-  formSubmit: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, backgroundColor: C.purple, borderRadius: 13, padding: 15 },
+  input: { borderRadius: 14, borderWidth: 0, backgroundColor: '#FFFFFF', paddingHorizontal: 14, paddingVertical: 14, fontSize: 14, color: C.ink, marginBottom: 16 },
+  formSubmit: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, backgroundColor: C.purple, borderRadius: 14, padding: 15 },
   formSubmitText: { color: C.white, fontWeight: '800', fontSize: 14 },
   sectionHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14 },
   sectionTitle: { fontSize: 21, fontWeight: '800', color: C.ink, letterSpacing: -.6 },
   sectionHint: { fontSize: 9, fontWeight: '800', color: '#9290A3', letterSpacing: 1 },
-  searchBox: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(255,255,255,0.76)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.96)', borderRadius: 15, paddingHorizontal: 14, marginBottom: 16 },
+  searchBox: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#EEE6F8', borderRadius: 15, paddingHorizontal: 14, marginBottom: 16 },
   searchInput: { flex: 1, color: C.ink, fontSize: 14, paddingVertical: 13 },
-  tabs: { flexDirection: 'row', padding: 5, borderRadius: 15, backgroundColor: 'rgba(221,202,238,0.58)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)', marginBottom: 15 },
+  tabs: { flexDirection: 'row', padding: 5, borderRadius: 15, backgroundColor: '#E9DEF5', marginBottom: 15 },
   tab: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 11 },
-  activeTab: { backgroundColor: 'rgba(255,255,255,0.92)', shadowColor: C.purple, shadowOpacity: 0.09, shadowRadius: 7, elevation: 2 },
+  activeTab: { backgroundColor: C.purple },
   tabText: { color: C.muted, fontWeight: '800', fontSize: 13 },
-  activeTabText: { color: C.purple },
-  itemCard: { backgroundColor: 'rgba(255,255,255,0.78)', borderRadius: 20, padding: 16, marginBottom: 11, flexDirection: 'row', alignItems: 'flex-start', borderWidth: 1, borderColor: 'rgba(255,255,255,0.98)', shadowColor: C.purple, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.075, shadowRadius: 15, elevation: 3 },
+  activeTabText: { color: '#FFFFFF' },
+  itemCard: { backgroundColor: '#FFFFFF', borderRadius: 19, padding: 16, marginBottom: 11, flexDirection: 'row', alignItems: 'flex-start', shadowColor: '#4E286C', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.035, shadowRadius: 9, elevation: 1 },
   checkWrap: { width: 37, minHeight: 35, justifyContent: 'center', marginRight: 6 },
   itemBody: { flex: 1, paddingTop: 4 },
   itemName: { color: C.ink, fontSize: 15, fontWeight: '800' },
@@ -314,12 +317,12 @@ const styles = StyleSheet.create({
   progressMeta: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12, gap: 10 },
   progressLabel: { fontSize: 11, fontWeight: '700' },
   progressNumber: { fontSize: 11, color: C.muted, fontWeight: '700' },
-  miniTrack: { height: 5, backgroundColor: '#F0E7F7', borderRadius: 8, marginTop: 7, overflow: 'hidden' },
+  miniTrack: { height: 5, backgroundColor: '#EDE2F7', borderRadius: 8, marginTop: 7, overflow: 'hidden' },
   miniFill: { height: '100%', borderRadius: 8 },
   doneText: { color: C.green, fontSize: 11, fontWeight: '800', marginTop: 9 },
   trash: { padding: 8, marginLeft: 3 },
-  emptyCard: { backgroundColor: 'rgba(255,255,255,0.78)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.98)', borderRadius: 20, padding: 28, alignItems: 'center', marginTop: 5 },
-  emptyIcon: { width: 64, height: 64, borderRadius: 20, backgroundColor: C.purpleSoft, justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
+  emptyCard: { backgroundColor: '#EEE6F8', borderRadius: 20, padding: 28, alignItems: 'center', marginTop: 5 },
+  emptyIcon: { width: 64, height: 64, borderRadius: 20, backgroundColor: '#DDC9F1', justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
   emptyTitle: { fontSize: 17, fontWeight: '800', color: C.ink },
   emptyText: { color: C.muted, fontSize: 12, textAlign: 'center', marginTop: 8, lineHeight: 19 },
   errorBox: { backgroundColor: '#FFF0F1', borderRadius: 13, padding: 13, marginBottom: 15, flexDirection: 'row', alignItems: 'center', gap: 9 },

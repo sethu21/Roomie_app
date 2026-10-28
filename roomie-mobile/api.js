@@ -1,5 +1,5 @@
 
-const API_URL = 'http://10.106.217.165:3000';
+const API_URL = process.env.EXPO_PUBLIC_API_URL;
 async function handleResponse(response) {
   const data = await response.json();
 

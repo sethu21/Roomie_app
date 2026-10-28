@@ -3076,7 +3076,7 @@ IMPORTANT RULES:
     }
   }
 );
-------------------------------------
+// -------------------- Profile Photo Routes --------------------
 const profilePhotoRoutes = require('./roomie_profile_photo_routes');
 app.use('/uploads', express.static('uploads'));
 
